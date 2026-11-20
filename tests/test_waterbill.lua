@@ -169,4 +169,34 @@ check(#tt.lines == 0, "no tooltip line for items with a vendor price")
 W.prints = {}; WB.Slash("debug")
 check(W.prints[1] and W.prints[1]:find("AH cut: 5%% for a faction house") and W.prints[1]:find("not game data") and W.prints[2]:find("duration: 2 h") and W.prints[3]:find("PriceLog"), "debug names the duration and price source")
 
+-- Last resort in WB.Fit: huge gold or a huge xN still fits (name dropped, then the tail cut with "…"), never wider.
+local lst = "|cffffd100LIST|r "
+for _, tail in ipairs({ " x40 ~9999999g 99s · 9999g 99s/24h", " x99999999999 ~123456789012g 99s · 99999999g 99s/24h",
+  (" x1"):rep(200) }) do
+  local line = WB.Fit(lst, "Crystal Water", tail)
+  check(friz(line) <= WB.TEXT_W and line:sub(1, #lst) == lst and visible(line, 222) == table.concat(chars(line)), "overflow fits 218 px, the client never cuts it: " .. line)
+end
+check(WB.Fit(lst, "Crystal Water", " x40 ~9999999g 99s · 9999g 99s/24h"):find("Crystal", 1, true) == nil, "the name goes first when only the figures fit")
+check(WB.Fit(lst, "Water", " x4") == lst .. "Water x4", "short lines are untouched")
+local hugeHead = ("|cffffd100%s|r "):format(("W"):rep(60))
+check(friz(WB.Fit(hugeHead, "Water", " x4")) >= 0, "a head wider than the line still returns (no endless loop)")
+
+-- Secret item name or bound flag: never read; the stack falls back to the item's own name or "item <id>".
+local origInfo = C_Container.GetContainerItemInfo
+local secretName, secretBound = "SecretItemName", {}
+W.secret[secretName] = true; W.secret[secretBound] = true
+C_Container.GetContainerItemInfo = function(b, sl)
+  local t = origInfo(b, sl); if t then t.itemName, t.isBound = secretName, secretBound end; return t
+end
+W.bags = { [0] = { { 8079, 20 } } }
+WB.Scan()
+local st = WB.stacks[1]
+check(st and st.name == nil and st.bound == false and st.count == 20, "secret itemName / isBound: not stored, not read as bound")
+WB.Slash("")
+local shown = table.concat(WB.lines, "\n")
+check(not shown:find("SecretItemName", 1, true) and #ns.Core.errors == 0, "the secret name never reaches a line, no Lua errors")
+WB.Slash("")
+C_Container.GetContainerItemInfo = origInfo; W.secret[secretName] = nil
+
+
 W.done("WaterBill")

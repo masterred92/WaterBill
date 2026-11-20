@@ -183,20 +183,36 @@ function FS.NeedText(need)
   return early and (L["Learn %s at level %d"]):format(need.name, need.level) or (L["Learn %s from your trainer"]):format(need.name)
 end
 -- "Hide until I learn" is saved per character in the addon's own SavedVariables (db.hideUntilLearned["Name-Realm"]).
-local function charKey()
-  local n, r = UnitName and FS.Call(UnitName, "player"), GetRealmName and FS.Call(GetRealmName)
-  return tostring(n or "?") .. "-" .. tostring(r or "?")
+-- Name or realm unreadable (secret, missing or empty): nothing is saved; the box hides for this session only.
+local function plainText(fn, ...)
+  if type(fn) ~= "function" then return nil end
+  local ok, v = pcall(fn, ...)
+  if not ok or FS.IsSecret(v) or type(v) ~= "string" or v == "" then return nil end
+  return v
 end
+local function charKey()
+  local n, r = plainText(UnitName, "player"), plainText(GetRealmName)
+  if not (n and r) then return nil end
+  return n .. "-" .. r
+end
+FS.CharKey = charKey
 function FS.HiddenUntilLearned(key)
   local r = FS.rows[key]
-  local t = r and type(r.db) == "table" and r.db.hideUntilLearned
-  return type(t) == "table" and t[charKey()] == true
+  if not r then return false end
+  if r.hideSession then return true end
+  local t, k = type(r.db) == "table" and r.db.hideUntilLearned, charKey()
+  return k ~= nil and type(t) == "table" and t[k] == true
 end
 function FS.HideUntilLearned(key)
   local r = FS.rows[key]
-  if not (r and type(r.db) == "table") then return false end
-  r.db.hideUntilLearned = r.db.hideUntilLearned or {}
-  r.db.hideUntilLearned[charKey()] = true
+  if not r then return false end
+  local k = charKey()
+  if k and type(r.db) == "table" then
+    r.db.hideUntilLearned = type(r.db.hideUntilLearned) == "table" and r.db.hideUntilLearned or {}
+    r.db.hideUntilLearned[k] = true
+  else
+    r.hideSession = true   -- can't tell who this is: don't save, hide until reload or until learned
+  end
   FS.State(key, "hidden")
   return true
 end
@@ -432,9 +448,9 @@ end
 function FS.Learned(key)
   local r = FS.rows[key]
   if not r then return end
-  r.learnLine = nil
-  local t = type(r.db) == "table" and r.db.hideUntilLearned
-  if type(t) == "table" then t[charKey()] = nil end
+  r.learnLine, r.hideSession = nil, nil
+  local t, k = type(r.db) == "table" and r.db.hideUntilLearned, charKey()
+  if k and type(t) == "table" then t[k] = nil end
 end
 
 function FS.Register(key, db, opts)

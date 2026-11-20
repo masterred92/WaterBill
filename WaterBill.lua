@@ -7,10 +7,10 @@
 --   * The price is your own PriceLog scan, through the Kenny hub (ns.Hub.GetPrice), the same way GoldPerSpot reads it.
 --     No scan = "no price scan", never a guess. Prices are labelled "before AH cut".
 --   * The deposit is read live from the game (CalculateCommodityDeposit / CalculateItemDeposit) only while the AH is
---     open; it is never hard-coded. No deposit from the game = "deposit unknown" and no LIST verdict.
+--     open; it is never hard-coded. No deposit from the game = DEPOSIT? and no LIST verdict.
 --     Duration: the one picked in Blizzard's sell frame (CVar auctionHouseDurationDropdown, which the sell frame itself
 --     reads: Blizzard_AuctionHouseSellFrame.lua) when readable, else index 1. On Forever 1/2/3 = 2/8/24 h
---     (GlobalStrings 70862 AUCTION_DURATION_ONE/TWO/THREE); every deposit is labelled "for a N h post".
+--     (GlobalStrings 70862 AUCTION_DURATION_ONE/TWO/THREE); every deposit is shown with its post length, e.g. 10s50c/2h.
 --   * LIST needs price x count x (1 - AH cut) > deposit. The cut is an ASSUMPTION from player sources, not game data (the
 --     UI only has the label AUCTION_HOUSE_CUT_COLON, no rate): 5% at a faction house, 15% at the neutral (goblin) house,
 --     the same rates Kenny's NeutralFlip uses. The house comes from the uiMap (IDs confirmed in UiMap 70862), else the zone
@@ -110,9 +110,13 @@ function WB.Scan()
       local id = type(info) == "table" and C.SafeNumber(info.itemID)
       if id and WB.ITEMS[id] then
         local s = found[id]
-        if not s then s = { itemID = id, count = 0, bound = false, bag = bag, slot = slot, name = info.itemName }; found[id] = s; order[#order + 1] = s end
+        -- name and bound flag are used only when plain (a secret value is never read or compared)
+        local nm = info.itemName
+        if C.IsSecret(nm) or type(nm) ~= "string" or nm == "" then nm = nil end
+        if not s then s = { itemID = id, count = 0, bound = false, bag = bag, slot = slot, name = nm }; found[id] = s; order[#order + 1] = s end
+        s.name = s.name or nm
         s.count = s.count + (C.SafeNumber(info.stackCount) or 1)
-        if info.isBound == true then s.bound = true end
+        if not C.IsSecret(info.isBound) and info.isBound == true then s.bound = true end
       end
     end
   end
@@ -210,16 +214,26 @@ function WB.Width(text)
   return #(text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) * 6
 end
 -- head .. name .. tail, with name cut (whole characters, then "…") until it fits WB.TEXT_W.
+-- Last resort, when even "head … tail" is too wide (huge gold, a huge xN): drop the name, then cut the tail from the
+-- right with "…". The line is always within WB.TEXT_W, so the client never wraps or cuts it on its own.
+local function trim(s) return (s:sub(1, -2):gsub("[\128-\255]+$", ""):gsub("%s+$", "")) end
 function WB.Fit(head, name, tail)
   local line = head .. name .. tail
   if WB.Width(line) <= WB.TEXT_W then return line end
   local cut = name
   while cut ~= "" do
-    cut = cut:sub(1, -2):gsub("[\128-\255]+$", ""):gsub("%s+$", "")
+    cut = trim(cut)
     line = head .. cut .. "…" .. tail
     if WB.Width(line) <= WB.TEXT_W then return line end
   end
-  return head .. "…" .. tail
+  if WB.Width(head .. "…" .. tail) <= WB.TEXT_W then return head .. "…" .. tail end
+  local t = tail
+  while t ~= "" do
+    t = trim(t)
+    line = head .. t .. "…"
+    if WB.Width(line) <= WB.TEXT_W then return line end
+  end
+  return head .. "…"
 end
 function WB.ShortName(s)
   return ((s.name or ("item " .. s.itemID)):gsub("^" .. L["Conjured"] .. " ", ""))

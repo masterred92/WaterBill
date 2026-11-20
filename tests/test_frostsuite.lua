@@ -246,6 +246,23 @@ W.fire("PLAYER_LEVEL_UP", 12)
 check(refreshed == 1 and FS.PlayerLevel() == 12, "PLAYER_LEVEL_UP re-checks every box and its level is used at once")
 W.fire("LEARNED_SPELL_IN_SKILL_LINE", 122)
 check(refreshed == 2, "LEARNED_SPELL_IN_SKILL_LINE re-checks every box")
+-- name or realm unreadable (secret value, or empty): the click hides for this session only and saves nothing
+local saveName, saveRealm = UnitName, GetRealmName
+UnitName = function() return "SecretName" end; W.secret["SecretName"] = true
+lrow.db.hideUntilLearned = nil; lrow.hideSession = nil; FS.NotYet(lk, needs[1])
+check(FS.CharKey() == nil and lrow.state == "learn", "secret name: no character key, the line still shows")
+lrow.learnBtn.scripts.OnClick(lrow.learnBtn)
+check(lrow.state == "hidden" and lrow.hideSession == true and lrow.db.hideUntilLearned == nil, "secret name: hidden this session, nothing saved")
+FS.NotYet(lk, needs[1])
+check(lrow.state == "hidden", "secret name: stays hidden this session")
+FS.Learned(lk)
+check(lrow.hideSession == nil, "learning it ends the session hide")
+W.secret["SecretName"] = nil; UnitName = saveName
+GetRealmName = function() return "" end
+FS.NotYet(lk, needs[1]); lrow.learnBtn.scripts.OnClick(lrow.learnBtn)
+check(FS.CharKey() == nil and lrow.hideSession == true and lrow.db.hideUntilLearned == nil, "empty realm: nothing saved")
+GetRealmName = saveRealm; FS.Learned(lk)
+check(FS.CharKey() == "Kenny-TestRealm", "readable name and realm: Name-Realm")
 lrow.opts.refresh = nil
 FS.level, W.level, W.known = nil, nil, nil
 W.prints = {}

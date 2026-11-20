@@ -6,6 +6,7 @@
 - One short line per item: verdict first, then the item, count and figures. A long item name is shortened with `…` so the price and deposit stay visible, e.g. `LIST Crystal Water x40 ~32s 0c · 10s50c/2h`.
 - `DEPOSIT?` and `ASK` verdict words when the game gives no deposit or can't say whether the auction house takes the item.
 - Shorter auction-house status, e.g. `AH · faction 5% assumed`.
+- Works at any level and for any class (it reads items, not spells). Very large figures (huge gold or counts) are cut with `…` instead of running past the box.
 
 ## 1.0.0 (Nov 20, 2026)
 
