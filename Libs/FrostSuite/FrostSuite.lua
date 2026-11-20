@@ -6,7 +6,7 @@
 -- upgrade keeps it. Each addon works alone: with one addon loaded the dock is a single row.
 -- Look and numbers come from UI Bot's VISUAL_SPEC.md (v1): FS.C, FS.FONT, FS.PALETTE and FS.ADDONS are the drop-in tables.
 local _, ns = ...
-local MAJOR, MINOR = "FrostSuite-1.0", 4
+local MAJOR, MINOR = "FrostSuite-1.0", 5
 local FS = _G.FrostSuite_1_0
 if type(FS) ~= "table" then FS = {}; _G.FrostSuite_1_0 = FS end
 ns.FrostSuite = FS
@@ -28,6 +28,7 @@ FS.C = {
   RELAYOUT_AFTER_COMBAT = 2, RELAYOUT_MIN_GAP = 1,
   SCALE_MIN = 0.8, SCALE_MAX = 1.4, SCALE_STEP = 0.1,
   DEFAULT_POINT = { "TOPLEFT", "CENTER", 220, 160 },
+  LEARN_BTN_W = 128, LEARN_BTN_H = 18,   -- r5: "Hide until I learn", UIPanelButtonTemplate, BOTTOMLEFT (8, 7) like Reset
   BG = "Interface\\Tooltips\\UI-Tooltip-Background",      -- 137056
   BORDER = "Interface\\Tooltips\\UI-Tooltip-Border",      -- 137057
   BAR = "Interface\\TargetingFrame\\UI-StatusBar",        -- 137012
@@ -153,6 +154,52 @@ function FS.KnowsAny(set)
   return false
 end
 function FS.IsMage() local _, class = UnitClass("player"); return class == "MAGE" end
+
+-- ---------- r5: low-level characters (a box whose spell isn't learned yet) ----------
+-- A need is { name = "Frost Nova", level = 10, spells = { [122] = 1, ... } [, talent = true] [, text = "own line"] }.
+-- Levels come from the client's SpellLevels (BaseLevel) and Talent (TierID: level 10 + 5 x tier) tables.
+-- FS.Missing(needs) -> the first need in the list (lowest level first) the player doesn't know yet, or nil (all known, or
+-- the client can't say: then the box works as before). The box then shows one calm line and a small
+-- "Hide until I learn" button (FS.NotYet), and comes back by itself when the spells are learned (FS.Learned).
+function FS.PlayerLevel()
+  local v = UnitLevel and FS.Call(UnitLevel, "player")
+  v = type(v) == "number" and v or nil
+  if FS.level and (not v or FS.level > v) then v = FS.level end   -- PLAYER_LEVEL_UP's level, before UnitLevel catches up
+  return v
+end
+function FS.Missing(needs)
+  for _, need in ipairs(needs or {}) do
+    if FS.KnowsAny(need.spells or {}) == false then return need end
+  end
+  return nil
+end
+function FS.NeedText(need)
+  if need.text then return need.text end
+  local lvl = FS.PlayerLevel()
+  local early = need.level and lvl and lvl < need.level
+  if need.talent then
+    return early and (L["Take %s at level %d"]):format(need.name, need.level) or (L["Take the %s talent"]):format(need.name)
+  end
+  return early and (L["Learn %s at level %d"]):format(need.name, need.level) or (L["Learn %s from your trainer"]):format(need.name)
+end
+-- "Hide until I learn" is saved per character in the addon's own SavedVariables (db.hideUntilLearned["Name-Realm"]).
+local function charKey()
+  local n, r = UnitName and FS.Call(UnitName, "player"), GetRealmName and FS.Call(GetRealmName)
+  return tostring(n or "?") .. "-" .. tostring(r or "?")
+end
+function FS.HiddenUntilLearned(key)
+  local r = FS.rows[key]
+  local t = r and type(r.db) == "table" and r.db.hideUntilLearned
+  return type(t) == "table" and t[charKey()] == true
+end
+function FS.HideUntilLearned(key)
+  local r = FS.rows[key]
+  if not (r and type(r.db) == "table") then return false end
+  r.db.hideUntilLearned = r.db.hideUntilLearned or {}
+  r.db.hideUntilLearned[charKey()] = true
+  FS.State(key, "hidden")
+  return true
+end
 
 -- ---------- shared position, lock and scale (db.suite in every addon's own SavedVariables; newest stamp wins) ----------
 local function defaultSuite()
@@ -330,12 +377,64 @@ function FS.Bar(key, frac, color)
   r.bar:SetValue(math.max(0, math.min(1, frac)))
   r.bar:Show()
 end
--- "idle" (thin strip), "active" (full height), or "hidden" (takes no slot: addon off, or a utility row with nothing to show).
+-- "idle" (thin strip), "active" (full height), "learn" (r5: the spell isn't learned yet: one calm line and the
+-- "Hide until I learn" button; hidden in combat), or "hidden" (takes no slot: addon off, or a utility row with nothing to show).
+local function learnParts(r)
+  if r.learnText then return end
+  r.learnText = font(r, FS.FONT.BODY, "Mist")
+  r.learnText:SetPoint("TOPLEFT", r, "TOPLEFT", FS.C.EDGE_X, -FS.C.HEAD_Y)
+  r.learnText:SetPoint("RIGHT", r, "RIGHT", -FS.C.EDGE_X, 0)
+  r.learnText:SetWordWrap(false)
+  r.learnText:SetMaxLines(1)
+  r.learnText:Hide()
+  local key = r.key
+  local b = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
+  b:SetSize(FS.C.LEARN_BTN_W, FS.C.LEARN_BTN_H)
+  b:SetPoint("BOTTOMLEFT", r, "BOTTOMLEFT", 8, 7)
+  b:SetText(L["Hide until I learn"])
+  b:SetScript("OnClick", function() _G.FrostSuite_1_0.HideUntilLearned(key) end)
+  b:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L["Hide until I learn"])
+    GameTooltip:AddLine(L["Hides this box on this character. It comes back by itself when you learn it."], 1, 1, 1)
+    GameTooltip:Show()
+  end)
+  b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  b:Hide()
+  r.learnBtn = b
+end
+local function showLearn(r)
+  if not r.learnText then return end
+  local on = r.state == "learn"
+  r.learnText:SetShown(on)
+  r.learnBtn:SetShown(on and not FS.InCombat())   -- like Shatter Happens' Reset: never shown in combat
+end
 function FS.State(key, state)
   local r = FS.rows[key]
   if r.state == state then return end
   r.state = state
+  showLearn(r)
   FS.RequestLayout()
+end
+-- The box can't work yet: show the need's line and the button (or nothing, if this character chose "Hide until I learn").
+function FS.NotYet(key, need)
+  local r = FS.rows[key]
+  if not r then return end
+  r.learnLine = FS.NeedText(need)
+  if FS.HiddenUntilLearned(key) then FS.State(key, "hidden"); return end
+  learnParts(r)
+  r.learnText:SetText(r.learnLine)
+  FS.Headline(key, ""); FS.Bar(key, nil); FS.ClearLines(key); FS.Status(key, "")
+  FS.State(key, "learn")
+  showLearn(r)
+end
+-- Everything the box needs is known (or the client can't say): forget "Hide until I learn" for this character.
+function FS.Learned(key)
+  local r = FS.rows[key]
+  if not r then return end
+  r.learnLine = nil
+  local t = type(r.db) == "table" and r.db.hideUntilLearned
+  if type(t) == "table" then t[charKey()] = nil end
 end
 
 function FS.Register(key, db, opts)
@@ -410,6 +509,7 @@ end
 -- grown to fit a status that moved below the title.
 function FS.RowHeight(r)
   local spec, h = FS.ADDONS[r.key]
+  if r.state == "learn" then return FS.BodyHeight(1) end   -- line at y -24, button at the bottom: 64
   if r.state == "active" or (FS.InCombat() and not spec.utility) then
     h = (r.opts.height and r.opts.height(r)) or spec.h
   else
@@ -419,7 +519,7 @@ function FS.RowHeight(r)
 end
 function FS.Visible(r)
   if r.state == "hidden" then return false end
-  if FS.ADDONS[r.key].utility and FS.InCombat() then return false end
+  if (FS.ADDONS[r.key].utility or r.state == "learn") and FS.InCombat() then return false end
   return true
 end
 function FS.Layout()
@@ -435,7 +535,7 @@ function FS.Layout()
       r:SetHeight(r.h)
       -- a title strip shows only icon, title and status; headline, bar and lines need the taller row,
       -- and nothing is drawn below the row's bottom edge
-      local full = r.h > FS.C.STRIP_H
+      local full = r.h > FS.C.STRIP_H and r.state ~= "learn"   -- the learn line replaces headline, bar and lines
       r.full = full
       r.head:SetShown(full)
       if not full or r.h < FS.C.BODY_Y + FS.C.BAR_H then r.bar:Hide() elseif r.barValue then r.bar:Show() end
@@ -444,6 +544,7 @@ function FS.Layout()
       r:ClearAllPoints()
       if prev then r:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -FS.C.GAP) else r:SetPoint("TOPLEFT", FS.Anchor(), "TOPLEFT", 0, 0) end
       r.after = prev and prev.key or "anchor"
+      showLearn(r)
       r:Show()
       prev = r
     else
@@ -591,16 +692,29 @@ SLASH_FROSTSUITE1, SLASH_FROSTSUITE2 = "/frost", "/frostsuite"
 SlashCmdList.FROSTSUITE = function(msg) _G.FrostSuite_1_0.Slash(msg) end
 
 -- ---------- combat: freeze heights at the start, relayout 2 s after the end ----------
-function FS.OnEvent(event)
+-- r5: a level-up or a newly learned spell re-checks every box (opts.refresh), so a box appears by itself.
+function FS.Relearn()
+  for _, key in ipairs(FS.order) do
+    local o = FS.rows[key].opts
+    if o.refresh then pcall(o.refresh) end
+  end
+end
+function FS.OnEvent(event, ...)
   if event == "PLAYER_REGEN_DISABLED" then
     FS.Layout()
   elseif event == "PLAYER_REGEN_ENABLED" then
     C_Timer.After(FS.C.RELAYOUT_AFTER_COMBAT, function() _G.FrostSuite_1_0.Layout() end)
+  elseif event == "PLAYER_LEVEL_UP" then
+    local lvl = ...
+    if type(lvl) == "number" and not FS.IsSecret(lvl) then FS.level = lvl end
+    FS.Relearn()
+  elseif event == "LEARNED_SPELL_IN_SKILL_LINE" then
+    FS.Relearn()
   end
 end
-if not FS.events then
-  FS.events = CreateFrame("Frame")
-  FS.events:RegisterEvent("PLAYER_REGEN_DISABLED")
-  FS.events:RegisterEvent("PLAYER_REGEN_ENABLED")
-end
-FS.events:SetScript("OnEvent", function(_, event) _G.FrostSuite_1_0.OnEvent(event) end)
+FS.events = FS.events or CreateFrame("Frame")
+FS.events:RegisterEvent("PLAYER_REGEN_DISABLED")
+FS.events:RegisterEvent("PLAYER_REGEN_ENABLED")
+FS.events:RegisterEvent("PLAYER_LEVEL_UP")
+FS.events:RegisterEvent("LEARNED_SPELL_IN_SKILL_LINE")
+FS.events:SetScript("OnEvent", function(_, event, ...) _G.FrostSuite_1_0.OnEvent(event, ...) end)

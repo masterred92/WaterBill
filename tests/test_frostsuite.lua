@@ -196,4 +196,57 @@ W.known = { [10] = true }
 check(FS.KnowsAny({ [10] = true, [6141] = true }) == true and FS.KnowsAny({ [120] = true }) == false, "KnowsAny")
 W.known = nil
 check(FS.IsMage(), "IsMage")
+
+-- r5 low level: one calm line and "Hide until I learn" while a needed spell isn't learned; back by itself once it is.
+W.known, W.level = { [133] = true, [168] = true }, 1   -- a new Mage: Fireball and Frost Armor
+local needs = { { name = "Frost Nova", level = 10, spells = { [122] = 1, [865] = 2 } }, { name = "Blizzard", level = 20, spells = { [10] = 1 } } }
+check(FS.PlayerLevel() == 1 and FS.Missing(needs) == needs[1], "level 1: Frost Nova is the first need")
+check(FS.NeedText(needs[1]) == "Learn Frost Nova at level 10", "need line names the level")
+check(FS.NeedText({ name = "Ice Barrier", level = 40, talent = true }) == "Take Ice Barrier at level 40", "talent need line")
+W.level = 45
+check(FS.NeedText({ name = "Ice Barrier", level = 40, talent = true }) == "Take the Ice Barrier talent", "talent need after its level")
+check(FS.NeedText(needs[1]) == "Learn Frost Nova from your trainer", "spell need after its level")
+check(FS.NeedText({ name = "X", text = "own line" }) == "own line", "a need may bring its own line")
+W.level = 1
+W.known[865] = true
+check(FS.Missing(needs) == needs[2], "any rank counts as known")
+W.known[10] = true
+check(FS.Missing(needs) == nil, "all known: nothing missing")
+local saveSB = C_SpellBook; C_SpellBook = nil
+check(FS.Missing(needs) == nil, "client can't say: treated as known (the box works as before)")
+C_SpellBook = saveSB
+local lk = name == "ConeOfPlenty" and "BarrierReef" or "ConeOfPlenty"   -- a fake row
+local lrow, refreshed = FS.rows[lk], 0
+lrow.opts.refresh = function() refreshed = refreshed + 1 end
+FS.Status(lk, "0/5"); FS.Headline(lk, "SCOOP 1/5"); FS.Bar(lk, 0.2)
+FS.NotYet(lk, needs[1]); FS.Layout()
+check(lrow.state == "learn" and lrow.h == 64 and lrow.learnText.shown and lrow.learnText.text_ == "Learn Frost Nova at level 10",
+  "learn state: one line, row 64")
+check(lrow.learnBtn.shown and lrow.learnBtn.text_ == "Hide until I learn", "the button shows out of combat")
+check(not lrow.head.shown and not lrow.bar.shown and lrow.statusText == "", "no headline, bar or status beside the learn line")
+W.combat = true; W.fire("PLAYER_REGEN_DISABLED")
+check(not lrow.shown and lrow.after == nil, "learn rows hide in combat")
+W.combat = false; W.fire("PLAYER_REGEN_ENABLED"); W.advance(2.1)
+check(lrow.shown and lrow.learnBtn.shown, "and come back after combat")
+lrow.learnBtn.scripts.OnClick(lrow.learnBtn)
+check(lrow.state == "hidden" and lrow.db.hideUntilLearned["Kenny-TestRealm"] == true, "Hide until I learn: hidden, saved per character")
+FS.Layout()
+check(not lrow.shown and lrow.after == nil, "a hidden-until-learned row takes no slot")
+FS.NotYet(lk, needs[1])
+check(lrow.state == "hidden", "stays hidden while the spell is still missing")
+lrow.db.hideUntilLearned = { ["Alt-TestRealm"] = true }
+FS.NotYet(lk, needs[1])
+check(lrow.state == "learn", "another character's choice doesn't hide this one")
+lrow.learnBtn.scripts.OnClick(lrow.learnBtn)
+FS.Learned(lk)
+check(lrow.db.hideUntilLearned["Kenny-TestRealm"] == nil and lrow.db.hideUntilLearned["Alt-TestRealm"] == true, "learning it clears only this character's choice")
+FS.State(lk, "idle")
+check(not lrow.learnText.shown and not lrow.learnBtn.shown, "leaving the learn state hides the line and button")
+W.fire("PLAYER_LEVEL_UP", 12)
+check(refreshed == 1 and FS.PlayerLevel() == 12, "PLAYER_LEVEL_UP re-checks every box and its level is used at once")
+W.fire("LEARNED_SPELL_IN_SKILL_LINE", 122)
+check(refreshed == 2, "LEARNED_SPELL_IN_SKILL_LINE re-checks every box")
+lrow.opts.refresh = nil
+FS.level, W.level, W.known = nil, nil, nil
+W.prints = {}
 W.done(name .. " frostsuite")

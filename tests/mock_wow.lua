@@ -100,6 +100,7 @@ function M.install(env)
     GetCombatSessionSourceFromID = function() return meterSource() end,
     GetCombatSessionSourceFromType = function() return meterSource() end }
   env.UnitClass = function() return "Mage", M.class or "MAGE", 8 end
+  env.UnitLevel = function(u) if u == "player" then return M.level or 60 end end   -- M.level: 1 for a new character
   -- Spellbook: M.known[spellID] = true for each rank the player knows (nil table = knows everything).
   env.C_SpellBook = { IsSpellKnown = function(id) return M.known == nil or M.known[id] == true end }
   env.IsPlayerMoving = function() return M.moving == true end
