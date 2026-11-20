@@ -100,7 +100,7 @@ local all = true
 for _, key in ipairs(FS.order) do local s = FS.rows[key].db.suite; all = all and s.locked == true end
 check(all and FS.IsLocked(), "lock written to every row's db.suite")
 check(FS.SetScale(2) == 1.4 and FS.SetScale(0.5) == 0.8 and FS.SetScale("1.13") == 1.1, "scale clamped 0.8-1.4, step 0.1")
-dbs.ScrollCall.suite = { point = "TOP", relPoint = "TOP", x = 1, y = 2, locked = false, scale = 1.2, stamp = W.now + 50 }
+dbs[name == "ScrollCall" and "WaterBill" or "ScrollCall"].suite = { point = "TOP", relPoint = "TOP", x = 1, y = 2, locked = false, scale = 1.2, stamp = W.now + 50 }
 check(FS.Suite().scale == 1.2 and FS.IsLocked() == false, "newest db.suite wins")
 FS.ResetPosition()
 local s = FS.Suite()
