@@ -70,6 +70,8 @@ map = 1434; W.fire("BAG_UPDATE_DELAYED")
 check(WB.stacks[1].house == "neutral" and WB.stacks[1].cut == 0.15, "confirmed neutral map (Stranglethorn Vale 1434): neutral")
 map = 1454; W.fire("BAG_UPDATE_DELAYED")
 check(WB.stacks[1].house == "faction" and WB.stacks[1].cut == 0.05, "confirmed faction map (Orgrimmar 1454): faction, 5%")
+map = 2482; W.fire("BAG_UPDATE_DELAYED")
+check(WB.stacks[1].house == "unknown" and WB.stacks[1].cut == 0.15, "unconfirmed Forever-only map (Mount Hyjal 2482): unknown, 15%")
 _G.GetLocale = function() return "enUS" end; map = nil
 zone, sub = "Orgrimmar", "The Drag"; prices[8079] = { p = 40, t = 100 }; W.fire("BAG_UPDATE_DELAYED")
 -- faction 5% cut decides: worth 1100, deposit 1050 -> 1045 after the cut -> not worth it (would be LIST without the cut).

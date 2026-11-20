@@ -33,11 +33,13 @@ WB.CUT = { faction = 0.05, neutral = 0.15, unknown = 0.15 }
 -- The goblin towns have no uiMap of their own: Booty Bay (area 35) is in Stranglethorn Vale (area 33 -> uiMap 1434),
 -- Gadgetzan (976) in Tanaris (440 -> 1446), Everlook (2255) in Winterspring (618 -> 1452) (AreaTable 70862).
 WB.NEUTRAL_MAPS = { [1434] = true, [1446] = true, [1452] = true }
--- Every other zone / city / battleground uiMap in UiMap 70862 (Type 3 or 6): none of them holds a neutral auction house.
+-- Classic-era zone / city / battleground uiMaps in UiMap 70862 (Type 3 or 6) with no neutral auction house. The
+-- Forever-only zones (2482, 2521, 2524, 2548, 2652, 2665) are left out: nothing confirms their auction houses, so they
+-- fall back to the zone name (English clients) or unknown (15%).
 WB.FACTION_MAPS = {}
 for _, id in ipairs({ 1411, 1412, 1413, 1416, 1417, 1418, 1419, 1420, 1421, 1422, 1423, 1424, 1425, 1426, 1427, 1428, 1429,
   1430, 1431, 1432, 1433, 1435, 1436, 1437, 1438, 1439, 1440, 1441, 1442, 1443, 1444, 1445, 1447, 1448, 1449, 1450, 1451,
-  1453, 1454, 1455, 1456, 1457, 1458, 1459, 1460, 1461, 2482, 2521, 2524, 2548, 2652, 2665 }) do WB.FACTION_MAPS[id] = true end
+  1453, 1454, 1455, 1456, 1457, 1458, 1459, 1460, 1461 }) do WB.FACTION_MAPS[id] = true end
 -- Name fallback (as NeutralFlip), trusted only on an English client: on any other locale a non-match proves nothing.
 WB.NEUTRAL_NAMES = { ["Booty Bay"] = true, ["Gadgetzan"] = true, ["Everlook"] = true,
   ["Tanaris"] = true, ["Winterspring"] = true, ["Stranglethorn Vale"] = true, ["The Cape of Stranglethorn"] = true }
