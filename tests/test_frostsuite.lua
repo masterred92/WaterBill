@@ -35,7 +35,8 @@ FS.Layout()
 check(#FS.order == 7, "seven rows docked")
 check(FS.order[1] == "HoldTheWeather" and FS.order[7] == "ScrollCall", "dock order follows FS.ADDONS order")
 check(FS.rows.HoldTheWeather.after == "anchor" and FS.rows.EightSecondArgument.after == "HoldTheWeather", "rows chain top to bottom")
-check(FS.rows.HoldTheWeather.h == 28 and FS.rows.ShatterHappens.h == 96, "idle heights: strip 28, Shatter 96")
+check(FS.rows.HoldTheWeather.h == 28 and FS.rows.ShatterHappens.h == (name == "ShatterHappens" and 102 or 116),
+  "idle heights: strip 28, Shatter 116 (3 lines + Reset; the real addon: 102 before any fight)")
 check(FS.lock.owner == "HoldTheWeather", "padlock on the top row")
 check(FS.rows.HoldTheWeather.head.shown == false and FS.rows.ShatterHappens.head.shown == true, "strip hides the headline; taller idle rows keep it")
 -- A hidden row takes no slot; the next one moves up and takes the padlock.
@@ -46,7 +47,8 @@ FS.rows.HoldTheWeather.state = "idle"; FS.Layout()
 -- Combat: five combat rows go to active height, utility rows hide; heights frozen until 2 s after combat.
 W.combat = true
 W.fire("PLAYER_REGEN_DISABLED")
-check(FS.rows.HoldTheWeather.h == 50 and FS.rows.BarrierReef.h == 64 and FS.rows.ShatterHappens.h == 78, "combat heights")
+check(FS.rows.HoldTheWeather.h == 50 and FS.rows.BarrierReef.h == 78 and FS.rows.ShatterHappens.h == 78
+  and FS.rows.EightSecondArgument.h == 78 and FS.rows.ConeOfPlenty.h == 64, "combat heights fit line 2 (r4)")
 check(FS.rows.WaterBill.after == nil and FS.rows.ScrollCall.after == nil, "utility rows hidden in combat")
 FS.State("BarrierReef", "active")
 check(FS.layoutPending == nil, "no relayout in combat")
@@ -105,6 +107,52 @@ check(FS.Suite().scale == 1.2 and FS.IsLocked() == false, "newest db.suite wins"
 FS.ResetPosition()
 local s = FS.Suite()
 check(s.point == "TOPLEFT" and s.relPoint == "CENTER" and s.x == 220 and s.y == 160, "reset to the default spot")
+
+-- r4 layout: heights fit their lines, a status that would touch the title moves to a free text slot.
+check(FS.BodyHeight(1) == 64 and FS.BodyHeight(2) == 78 and FS.BodyHeight(3, true) == 116, "BodyHeight: 44 + 14 n + 6 (+ 24 Reset)")
+for _, key in ipairs(FS.order) do FS.rows[key].state = "idle"; FS.Status(key, ""); FS.Headline(key, ""); FS.ClearLines(key); FS.Bar(key, nil) end
+FS.Layout()
+local lr = FS.rows.LayoutTest or FS.rows.ScrollCall
+lr.state = "active"
+FS.Headline("ScrollCall", "3 unread scrolls", "Snow"); FS.Line("ScrollCall", 1, "Last: Spell Notes")
+FS.Status("ScrollCall", "short", "Mist"); FS.Layout()
+check(FS.rows.ScrollCall.status.shown and not FS.rows.ScrollCall.statusLine.shown and FS.rows.ScrollCall.statusSlot == nil, "short status stays beside the title")
+FS.Status("ScrollCall", "read 2 · ~5g 0s before AH cut", "Mist"); FS.Layout()
+local sc = FS.rows.ScrollCall
+check(not sc.status.shown and sc.statusLine.shown and sc.statusSlot == 2 and sc.h == 78, "long status moves to body line 2 and the row grows to 78")
+check(sc.statusLine.text_ == "read 2 · ~5g 0s before AH cut", "moved status keeps its text")
+FS.Status("ScrollCall", "", "Mist"); FS.Layout()
+check(not sc.status.shown and not sc.statusLine.shown and sc.h == 64, "empty status: nothing shown, row back to 64")
+-- headline empty: a long status takes the headline slot of a 44 px row (out of combat, idle)
+local hw = FS.rows.HoldTheWeather
+FS.Status("HoldTheWeather", "can't see your casts here", "Mist"); FS.Layout()
+check(hw.statusSlot == 0 and hw.h == 44 and hw.statusLine.shown, "idle strip + long status: status under the title, row 44")
+FS.Status("HoldTheWeather", "clear", "Mist"); FS.Layout()
+check(hw.statusSlot == nil and hw.h == 28 and hw.status.shown, "short status: back to a 28 px strip")
+-- bar takes body slot 1
+local bk = name == "BarrierReef" and "ConeOfPlenty" or "BarrierReef"   -- a fake row: the real addon repaints itself in combat
+local br = FS.rows[bk]
+br.state = "active"; FS.Headline(bk, "BUFF +15%"); FS.Bar(bk, 0.5); FS.Status(bk, "shield state unknown and more"); FS.Layout()
+check(br.statusSlot == 2 and br.h == 78 and br.statusLine.shown, "bar row: moved status on line 2, inside 78")
+-- lines never drawn below the row, and the move happens on the next frame without an explicit Layout
+local wb = FS.rows.WaterBill
+wb.state = "active"; FS.Headline("WaterBill", "Water Bill"); W.advance(2); FS.Layout()
+for i = 1, 4 do FS.Line("WaterBill", i, "DRINK Conjured Water x" .. i) end
+W.advance(1.1)
+check(wb.lines[4].shown == (wb.h >= 44 + 14 * 4), "a line is shown only when it fits inside the row")
+-- in combat heights are frozen: a moved status that would fall below the row is not shown
+W.combat = true; W.fire("PLAYER_REGEN_DISABLED")
+FS.Headline(bk, "REEF +20%"); FS.Line(bk, 2, "REFRESH"); FS.Status(bk, "shield state unknown and more")
+check(br.statusSlot == 3 and br.h == 78 and not br.statusLine.shown and not br.status.shown, "combat: no room below, status hidden, not overlapping")
+check(FS.layoutPending == nil, "combat: no relayout from content changes")
+W.combat = false; W.fire("PLAYER_REGEN_ENABLED"); W.advance(2.1)
+for _, key in ipairs(FS.order) do FS.Status(key, ""); FS.Headline(key, ""); FS.ClearLines(key); FS.Bar(key, nil) end
+-- wrapped line takes two slots
+FS.Headline("ShatterHappens", "No fights yet."); FS.Line("ShatterHappens", 1, "Use Frost spells and your Fingers of Frost show up here.", true)
+FS.Status("ShatterHappens", "a very long status that will not fit beside it")
+check(FS.rows.ShatterHappens.statusSlot == 3, "wrapped line 1 also takes slot 2")
+FS.Status("ShatterHappens", ""); FS.ClearLines("ShatterHappens")
+W.advance(2)
 
 -- /frost router.
 W.prints = {}

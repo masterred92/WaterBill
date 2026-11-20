@@ -21,6 +21,10 @@ local function frameObj(name)
     if k == "SetShown" then return function(_, v) t.shown = v and true or false end end
     if k == "SetText" then return function(_, v) t.text_ = v end end
     if k == "GetText" then return function() return t.text_ end end
+    -- about 6 px per character of 12 pt Friz Quadrata (colour codes don't count); real widths come from the client
+    if k == "GetStringWidth" then return function()
+      local x = type(t.text_) == "string" and t.text_ or ""
+      return #(x:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) * 6 end end
     if k == "SetChecked" then return function(_, v) t.checked = v and true or false end end
     if k == "GetChecked" then return function() return t.checked end end
     if k == "GetName" then return function() return t.name end end

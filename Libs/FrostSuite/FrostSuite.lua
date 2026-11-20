@@ -6,7 +6,7 @@
 -- upgrade keeps it. Each addon works alone: with one addon loaded the dock is a single row.
 -- Look and numbers come from UI Bot's VISUAL_SPEC.md (v1): FS.C, FS.FONT, FS.PALETTE and FS.ADDONS are the drop-in tables.
 local _, ns = ...
-local MAJOR, MINOR = "FrostSuite-1.0", 3
+local MAJOR, MINOR = "FrostSuite-1.0", 4
 local FS = _G.FrostSuite_1_0
 if type(FS) ~= "table" then FS = {}; _G.FrostSuite_1_0 = FS end
 ns.FrostSuite = FS
@@ -20,6 +20,10 @@ local L = (ns.Core and ns.Core.L) or setmetatable({}, { __index = function(_, k)
 FS.ANCHOR_NAME = "FrostSuiteAnchor"
 FS.C = {
   WIDTH = 240, GAP = 2, STRIP_H = 28, EDGE = 14, INSET = 3,
+  -- r4 layout: text x = 9 from each side; status right edge 9 (26 beside the padlock); title starts at 7 + 16 + 4 = 27.
+  -- Headline at y -24; bar or body line 1 at y -44, body lines step FONT.LINE_H; 6 px under the last line;
+  -- a bottom button (Shatter Happens' Reset: 18 tall at y +7) adds FOOTER_H. Status needs STATUS_GAP clear of the title.
+  EDGE_X = 9, LOCK_X = 26, TITLE_X = 27, STATUS_GAP = 8, HEAD_Y = 24, BODY_Y = 44, BAR_H = 8, PAD_BOTTOM = 6, FOOTER_H = 24,
   BG_ALPHA = 0.92, GLOW_PEAK = 0.15, PULSE_SEC = 0.5, PULSE_MIN_GAP = 3, SOUND_MIN_GAP = 4,
   RELAYOUT_AFTER_COMBAT = 2, RELAYOUT_MIN_GAP = 1,
   SCALE_MIN = 0.8, SCALE_MAX = 1.4, SCALE_STEP = 0.1,
@@ -42,18 +46,19 @@ FS.PALETTE = {
 }
 -- order = dock slot AND alert priority (lower wins); priority 0 = never flashes, never plays a sound.
 -- Icons are the real spell icons from SpellMisc (build 1.60.1.70862) where the addon follows one spell.
+-- Heights (r4) are FS.BodyHeight(lines[, footer]) = 44 + 14 * lines + 6 (+ 24): 64 = 1 line, 78 = 2 lines, 116 = 3 lines + Reset.
 FS.ADDONS = {
   HoldTheWeather      = { order = 1, priority = 1, cmd = "weather", accent = "StopPink", glow = "StopGlow", style = "HOLD", h = 50, sound = 569310,
                           icon = 135848 },  -- Frost Nova (SpellMisc 10230)
-  EightSecondArgument = { order = 2, priority = 2, cmd = "lance", accent = "LanceCyan", style = "TEXT", h = 58,
+  EightSecondArgument = { order = 2, priority = 2, cmd = "lance", accent = "LanceCyan", style = "TEXT", h = 78,
                           icon = 135844 },  -- Ice Lance (SpellMisc 400640)
-  ConeOfPlenty        = { order = 3, priority = 3, cmd = "cone", accent = "ScoopBlue", glow = "ScoopBlue", style = "PULSE", h = 58, sound = 567407, soundDefault = false,
+  ConeOfPlenty        = { order = 3, priority = 3, cmd = "cone", accent = "ScoopBlue", glow = "ScoopBlue", style = "PULSE", h = 64, sound = 567407, soundDefault = false,
                           icon = 135852 },  -- Cone of Cold (SpellMisc 10161)
-  BarrierReef         = { order = 4, priority = 4, cmd = "reef", accent = "ReefTeal", glow = "ReefTeal", style = "PULSE", h = 64, sound = 569286,
+  BarrierReef         = { order = 4, priority = 4, cmd = "reef", accent = "ReefTeal", glow = "ReefTeal", style = "PULSE", h = 78, sound = 569286,
                           icon = 135988 },  -- Ice Barrier (SpellMisc 13033)
-  ShatterHappens      = { order = 5, priority = 5, cmd = "shatter", accent = "ShardLilac", glow = "ShardLilac", style = "PULSE", h = 78, idleH = 96,
+  ShatterHappens      = { order = 5, priority = 5, cmd = "shatter", accent = "ShardLilac", glow = "ShardLilac", style = "PULSE", h = 78, idleH = 116, footer = true,
                           icon = 236227 },  -- Fingers of Frost (SpellMisc 400669)
-  WaterBill           = { order = 6, priority = 0, cmd = "water", utility = true, h = 50, lineH = 14, maxLines = 6,
+  WaterBill           = { order = 6, priority = 0, cmd = "water", utility = true, h = 64, maxLines = 6,
                           icon = "Interface\\Icons\\INV_Drink_18" },  -- 132805
   ScrollCall          = { order = 7, priority = 0, cmd = "scroll", utility = true, h = 64,
                           icon = 8188276 },  -- Comprehend Scroll (SpellMisc 1296017)
@@ -221,7 +226,10 @@ function FS.Status(key, text, color)
   r.statusText = text
   local c = pcolor(color or "Mist")
   r.status:SetTextColor(c[1], c[2], c[3])
+  r.statusLine:SetTextColor(c[1], c[2], c[3])
   r.status:SetText(text or "")
+  r.statusLine:SetText(text or "")
+  FS.PlaceStatus(r)
 end
 function FS.Headline(key, text, color)
   local r = FS.rows[key]
@@ -229,27 +237,94 @@ function FS.Headline(key, text, color)
   local c = pcolor(color or FS.ADDONS[key].accent or "Snow")
   r.head:SetTextColor(c[1], c[2], c[3])
   r.head:SetText(text or "")
+  FS.PlaceStatus(r)
 end
-function FS.Line(key, i, text)
+
+-- ---------- r4: body slots, heights and status vs title (VISUAL_SPEC.md section 5) ----------
+-- Height that shows n body lines (and a bottom button when footer is true).
+function FS.BodyHeight(n, footer)
+  local C = FS.C
+  return C.BODY_Y + FS.FONT.LINE_H * (n or 0) + C.PAD_BOTTOM + (footer and C.FOOTER_H or 0)
+end
+local function has(t) return t ~= nil and t ~= "" end
+local function textWidth(f)
+  local ok, w = pcall(function() return f:GetStringWidth() end)
+  if ok and type(w) == "number" and not FS.IsSecret(w) then return w end
+  return nil
+end
+-- Body line i fits when its bottom (two lines when wrapped) is inside the row.
+function FS.LineFits(r, i)
+  if r.full == false then return false end
+  local bottom = FS.C.BODY_Y + FS.FONT.LINE_H * (i + (r.lineWrap[i] and 1 or 0))
+  return (r.h or 0) >= bottom
+end
+-- The status sits right of the title only when title + gap + status fit. Otherwise it moves down to the first free
+-- text slot: the headline slot when the headline is empty, else the first body line not used by the bar or a line.
+-- r.statusNeed = row height that slot needs (FS.RowHeight grows the row to it out of combat). In combat heights are
+-- frozen, so a moved status that would fall below the box is not shown (the spec's "don't show it" rule).
+function FS.PlaceStatus(r, inLayout)
+  local C, LH = FS.C, FS.FONT.LINE_H
+  local need, y
+  if has(r.statusText) then
+    local tw, sw = textWidth(r.title), textWidth(r.status)
+    local right = (FS.top == r) and C.LOCK_X or C.EDGE_X
+    if tw and sw and C.TITLE_X + tw + C.STATUS_GAP + sw > C.WIDTH - right then
+      local footer = FS.ADDONS[r.key].footer and not FS.InCombat()
+      if not has(r.headText) then
+        r.statusSlot, y, need = 0, C.HEAD_Y, C.HEAD_Y + LH + C.PAD_BOTTOM + (footer and C.FOOTER_H or 0)
+      else
+        local i = 1
+        while has(r.lineText[i]) or (i == 1 and r.barValue) or (i > 1 and r.lineWrap[i - 1] and has(r.lineText[i - 1])) do i = i + 1 end
+        r.statusSlot, y, need = i, C.BODY_Y + (i - 1) * LH, FS.BodyHeight(i, footer)
+      end
+    end
+  end
+  local l = r.statusLine
+  if need then
+    r.status:Hide()
+    l:ClearAllPoints()
+    l:SetPoint("TOPLEFT", r, "TOPLEFT", C.EDGE_X, -y)
+    l:SetPoint("RIGHT", r, "RIGHT", -C.EDGE_X, 0)
+    l:SetShown(r.full ~= false and (r.h or 0) >= need)
+  else
+    r.statusSlot = nil
+    r.status:SetShown(has(r.statusText))
+    l:Hide()
+  end
+  local changed = r.statusNeed ~= need
+  r.statusNeed = need
+  -- out of combat a change of the needed height (or of an addon's own height) relayouts once (rate-limited)
+  if not inLayout and r.h and not FS.InCombat() and FS.Visible(r) and (changed or FS.RowHeight(r) ~= r.h) then FS.QueueLayout() end
+end
+-- Body line i at y = -(44 + 14 * (i - 1)). One line, cut with "..." when too long (never wrapped into the next line),
+-- unless wrap is true: then it may take two lines, so leave line i + 1 empty.
+function FS.Line(key, i, text, wrap)
   local r = FS.rows[key]
   if not r.lines[i] then
     local l = font(r, FS.FONT.BODY, "Snow")
-    l:SetPoint("TOPLEFT", r, "TOPLEFT", 9, -44 - (i - 1) * FS.FONT.LINE_H)
-    l:SetPoint("RIGHT", r, "RIGHT", -9, 0)
+    l:SetPoint("TOPLEFT", r, "TOPLEFT", FS.C.EDGE_X, -FS.C.BODY_Y - (i - 1) * FS.FONT.LINE_H)
+    l:SetPoint("RIGHT", r, "RIGHT", -FS.C.EDGE_X, 0)
     r.lines[i] = l
   end
-  r.lineText[i] = text
-  r.lines[i]:SetText(text or "")
+  local l = r.lines[i]
+  r.lineText[i], r.lineWrap[i] = text, wrap and true or nil
+  l:SetWordWrap(wrap and true or false)
+  l:SetMaxLines(wrap and 2 or 1)
+  l:SetText(text or "")
+  l:SetShown(FS.LineFits(r, i))
+  FS.PlaceStatus(r)
 end
 function FS.ClearLines(key, from)
   local r = FS.rows[key]
-  for i = from or 1, #r.lines do r.lineText[i] = nil; r.lines[i]:SetText("") end
+  for i = from or 1, #r.lines do r.lineText[i], r.lineWrap[i] = nil, nil; r.lines[i]:SetText("") end
+  FS.PlaceStatus(r)
 end
 function FS.Bar(key, frac, color)
   local r = FS.rows[key]
   r.barValue = frac
+  FS.PlaceStatus(r)
   if not frac then r.bar:Hide(); return end
-  if r.full == false then return end
+  if r.full == false or (r.h and r.h < FS.C.BODY_Y + FS.C.BAR_H) then return end
   local c = pcolor(color or FS.ADDONS[key].accent or "Snow")
   r.bar:SetStatusBarColor(c[1], c[2], c[3])
   r.bar:SetValue(math.max(0, math.min(1, frac)))
@@ -269,7 +344,7 @@ function FS.Register(key, db, opts)
   if FS.rows[key] then FS.rows[key].db = db; FS.rows[key].opts = opts or {}; return FS.rows[key] end
   local a = FS.Anchor()
   local r = CreateFrame("Frame", nil, a, "BackdropTemplate")
-  r.key, r.db, r.opts, r.lines, r.lineText, r.state = key, db, opts or {}, {}, {}, "idle"
+  r.key, r.db, r.opts, r.lines, r.lineText, r.lineWrap, r.state = key, db, opts or {}, {}, {}, {}, "idle"
   r:SetSize(FS.C.WIDTH, FS.C.STRIP_H)
   r:SetBackdrop({ bgFile = FS.C.BG, edgeFile = FS.C.BORDER, edgeSize = FS.C.EDGE,
     insets = { left = FS.C.INSET, right = FS.C.INSET, top = FS.C.INSET, bottom = FS.C.INSET } })
@@ -293,6 +368,11 @@ function FS.Register(key, db, opts)
   r.status = font(r, FS.FONT.STATUS, "Mist")
   r.status:SetJustifyH("RIGHT")
   r.status:SetPoint("TOPRIGHT", -9, -7)
+  r.status:SetWordWrap(false)
+  r.statusLine = font(r, FS.FONT.BODY, "Mist")   -- the status, moved below the title when it doesn't fit beside it
+  r.statusLine:SetWordWrap(false)
+  r.statusLine:SetMaxLines(1)
+  r.statusLine:Hide()
   r.head = font(r, FS.FONT.HEAD, spec.accent or "Snow")
   r.head:SetPoint("TOPLEFT", 9, -24)
   r.head:SetPoint("RIGHT", r, "RIGHT", -9, 0)
@@ -300,9 +380,9 @@ function FS.Register(key, db, opts)
   r.bar = CreateFrame("StatusBar", nil, r)
   r.bar:SetStatusBarTexture(FS.C.BAR)
   r.bar:SetMinMaxValues(0, 1)
-  r.bar:SetPoint("TOPLEFT", 9, -44)
+  r.bar:SetPoint("TOPLEFT", FS.C.EDGE_X, -FS.C.BODY_Y)
   r.bar:SetPoint("RIGHT", r, "RIGHT", -9, 0)
-  r.bar:SetHeight(8)
+  r.bar:SetHeight(FS.C.BAR_H)
   r.bar:Hide()
   r:EnableMouse(true)
   r:RegisterForDrag("LeftButton")
@@ -326,12 +406,16 @@ function FS.Register(key, db, opts)
 end
 
 -- ---------- dock layout ----------
+-- Row height: the addon's own height function (opts.height active / opts.idleHeight idle) or FS.ADDONS h / idleH,
+-- grown to fit a status that moved below the title.
 function FS.RowHeight(r)
-  local spec = FS.ADDONS[r.key]
+  local spec, h = FS.ADDONS[r.key]
   if r.state == "active" or (FS.InCombat() and not spec.utility) then
-    return (r.opts.height and r.opts.height(r)) or spec.h
+    h = (r.opts.height and r.opts.height(r)) or spec.h
+  else
+    h = (r.opts.idleHeight and r.opts.idleHeight(r)) or spec.idleH or FS.C.STRIP_H
   end
-  return spec.idleH or FS.C.STRIP_H
+  return math.max(h, r.statusNeed or 0)
 end
 function FS.Visible(r)
   if r.state == "hidden" then return false end
@@ -345,19 +429,22 @@ function FS.Layout()
   for _, key in ipairs(FS.order) do
     local r = FS.rows[key]
     if FS.Visible(r) then
+      FS.top = FS.top or r
+      FS.PlaceStatus(r, true)   -- measure first: a moved status can make the row taller
       r.h = FS.RowHeight(r)
       r:SetHeight(r.h)
-      -- a title strip shows only icon, title and status; headline, bar and lines need the taller row
+      -- a title strip shows only icon, title and status; headline, bar and lines need the taller row,
+      -- and nothing is drawn below the row's bottom edge
       local full = r.h > FS.C.STRIP_H
       r.full = full
       r.head:SetShown(full)
-      if not full then r.bar:Hide() elseif r.barValue then r.bar:Show() end
-      for _, l in ipairs(r.lines) do l:SetShown(full) end
+      if not full or r.h < FS.C.BODY_Y + FS.C.BAR_H then r.bar:Hide() elseif r.barValue then r.bar:Show() end
+      for i, l in ipairs(r.lines) do l:SetShown(FS.LineFits(r, i)) end
+      FS.PlaceStatus(r, true)
       r:ClearAllPoints()
       if prev then r:SetPoint("TOPLEFT", prev, "BOTTOMLEFT", 0, -FS.C.GAP) else r:SetPoint("TOPLEFT", FS.Anchor(), "TOPLEFT", 0, 0) end
       r.after = prev and prev.key or "anchor"
       r:Show()
-      FS.top = FS.top or r
       prev = r
     else
       r.after = nil
@@ -373,6 +460,12 @@ function FS.RequestLayout()
   if wait <= 0 then FS.Layout(); return end
   FS.layoutPending = true
   C_Timer.After(wait, function() _G.FrostSuite_1_0.Layout() end)
+end
+-- Same limit, but never right away: content changes (lines, status) made in one paint settle into one relayout next frame.
+function FS.QueueLayout()
+  if FS.InCombat() or FS.layoutPending then return end
+  FS.layoutPending = true
+  C_Timer.After(math.max(0, (FS.lastLayout or -100) + FS.C.RELAYOUT_MIN_GAP - now()), function() _G.FrostSuite_1_0.Layout() end)
 end
 
 -- One padlock, on the top shown row.
@@ -406,7 +499,8 @@ function FS.UpdateLock()
   for _, key in ipairs(FS.order) do
     local r = FS.rows[key]
     r.status:ClearAllPoints()
-    r.status:SetPoint("TOPRIGHT", r == top and -26 or -9, -7)
+    r.status:SetPoint("TOPRIGHT", r == top and -FS.C.LOCK_X or -FS.C.EDGE_X, -7)
+    FS.PlaceStatus(r, true)
   end
 end
 

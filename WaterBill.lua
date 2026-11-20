@@ -190,21 +190,28 @@ end
 
 function WB.Post(h) return (L["for a %d h post"]):format(h or 2) end
 
+-- One short line per stack (VISUAL_SPEC section 9): "VERDICT item xN price", the verdict word first and coloured, then
+-- the reason after " · ". The box cuts a long line with "..." (FrostSuite r4), so the important part comes first.
+-- "Conjured " is left off the panel name (every item here is conjured); tooltips keep the full name.
+function WB.ShortName(s)
+  local name = s.name or ("item " .. s.itemID)
+  return (name:gsub("^" .. L["Conjured"] .. " ", "")) .. " x" .. s.count
+end
 function WB.LineFor(s)
-  local name = (s.name or ("item " .. s.itemID)) .. " x" .. s.count
+  local name = WB.ShortName(s)
   local v = s.verdict
   if v == "LIST" then
-    return ("|cffffd100%s|r %s: ~%s %s, %s %s %s"):format(L["LIST"], name, WB.Money(s.worth), L["before AH cut"],
+    return ("|cffffd100%s|r %s ~%s · %s %s %s"):format(L["LIST"], name, WB.Money(s.worth),
       L["deposit"], WB.Money(s.deposit), WB.Post(s.hours))
   elseif v == "DRINK" or v == "EAT" then
-    return ("|cffd8f3ff%s|r %s: %s"):format(v == "EAT" and L["EAT"] or L["DRINK"], name, s.why or "")
-  elseif v == "vendor" then return ("%s: %s %s"):format(name, L["vendor price"], WB.Money(s.vendor))
-  elseif v == "noprice" then return ("%s: %s"):format(name, L["no price scan"])
+    return ("|cffd8f3ff%s|r %s · %s"):format(v == "EAT" and L["EAT"] or L["DRINK"], name, s.why or "")
+  elseif v == "vendor" then return ("|cffb8b8b8%s|r %s %s"):format(L["VENDOR"], name, WB.Money(s.vendor))
+  elseif v == "noprice" then return ("%s · %s"):format(name, L["no price scan"])
   elseif v == "nodeposit" then
-    return ("%s: ~%s %s, %s"):format(name, WB.Money(s.worth), L["before AH cut"], WB.ahOpen and L["deposit unknown"] or L["deposit unknown (open the AH)"])
-  elseif v == "ask" then return ("%s: ~%s %s, %s"):format(name, WB.Money(s.worth), L["before AH cut"], L["the AH answers when it's open"])
+    return ("%s ~%s · %s, %s"):format(name, WB.Money(s.worth), L["before AH cut"], WB.ahOpen and L["deposit unknown"] or L["deposit unknown (open the AH)"])
+  elseif v == "ask" then return ("%s ~%s · %s, %s"):format(name, WB.Money(s.worth), L["before AH cut"], L["the AH answers when it's open"])
   end
-  return ("%s: %s"):format(name, L["item data loading"])
+  return ("%s · %s"):format(name, L["item data loading"])
 end
 
 function WB.Showing() return (WB.ahOpen or WB.mailOpen or WB.asked) and not C.InCombat() end
@@ -232,7 +239,9 @@ function WB.Update()
   FS.Status(KEY, WB.ahOpen and (L["at the AH"] .. " · " .. WB.CutLabel()) or "", "Mist")
   FS.State(KEY, "active")
 end
-WB.Height = function() return 50 + 14 * math.max(0, #WB.lines - 1) end
+-- Lines start at y -44 and step 14 (FrostSuite r4 BodyHeight): 44 + 14 per line + 6 under the last one. A long AH status
+-- that can't sit beside the title gets one more line from the library.
+WB.Height = function() return FS.BodyHeight(math.max(1, #WB.lines)) end
 
 -- Item tooltip line through the Kenny hub (shared with the other Kenny addons).
 function WB.Tooltip(tooltip, itemID)

@@ -23,7 +23,12 @@ check(by[8079].count == 35, "stacks of the same water add up")
 check(by[8076].verdict == "EAT" and by[8076].why == "bound", "bound food: EAT")
 check(by[274964].verdict == "vendor", "vendor price > 0: no LIST/DRINK verdict")
 check(by[8079].verdict == "noprice" and row.lineText[1]:find("no price scan"), "no PriceLog scan: no price scan, never a guess")
-check(row.lineText[4]:find("vendor price 2s 0c"), "vendor price shown")
+check(row.lineText[4]:find("|cffb8b8b8VENDOR|r", 1, true) and row.lineText[4]:find("2s 0c"), "vendor price shown, VENDOR first")
+-- r4 layout: one short line per stack, never wrapped, box tall enough for every line (lines start at y -44)
+W.advance(1.1)
+check(row.h == 44 + 14 * #WB.lines + 6, "box height = 44 + 14 per line + 6")
+check(row.lines[1].shown and row.lines[#WB.lines].shown, "every verdict line is inside the box")
+check(not row.lineText[1]:find("Conjured", 1, true), "panel lines leave off 'Conjured'")
 
 prices[8079] = { p = 40, t = 100 }; prices[5350] = { p = 1, t = 100 }
 W.fire("BAG_UPDATE_DELAYED")
@@ -45,6 +50,9 @@ check(s1.deposit == 1050 and s1.verdict == "LIST" and row.lineText[1]:find("depo
 check(row.lineText[1]:find("|cffffd100LIST|r", 1, true) ~= nil, "LIST text is CoinGold ffd100")
 check(math.abs(s1.net - (1400 * 0.95 - 1050)) < 0.01 and s1.house == "faction", "faction house: 5% cut applied in the comparison")
 check(row.statusText:find("faction house: 5% cut assumed", 1, true) ~= nil, "faction rate labelled as an assumption")
+W.advance(1.1)
+check(not row.status.shown and row.statusLine.shown and row.statusSlot == #WB.lines + 1
+  and row.h == 44 + 14 * (#WB.lines + 1) + 6, "long AH status moves under the verdict lines; box grows one line")
 -- worth 1200, deposit 1050: faction 1140 > 1050 = LIST; neutral / unknown 1020 < 1050 = not worth it.
 prices[8079] = { p = 1200 / 35, t = 100 }; W.fire("BAG_UPDATE_DELAYED")
 check(WB.stacks[1].verdict == "LIST", "faction house (5%): LIST")
@@ -117,7 +125,7 @@ for i, id in ipairs({ 5350, 2288, 2136, 3772, 8077, 8078, 8079, 231778 }) do man
 W.bags = { [0] = many }
 WB.Slash("")
 check(row.state == "active" and #WB.lines == 7 and WB.lines[7] == "+2 more", "max 6 lines, then +N more")
-check(WB.Height() == 50 + 14 * 6, "height grows with the lines")
+check(WB.Height() == 44 + 14 * 7 + 6, "height grows with the lines (7 lines incl. +N more: 148)")
 WB.Slash("")
 check(row.state == "hidden", "/frost water toggles off")
 
