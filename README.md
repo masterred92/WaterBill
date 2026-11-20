@@ -10,7 +10,7 @@ One line per item in your bags. A long item name is shortened with `…` so the 
 | --- | --- |
 | `LIST Crystal Water x35 ~14s 0c · 10s50c/2h` | after the AH cut (assumed: 5% faction, 15% neutral), your last price scan says it's worth more than the deposit (here 10s 50c for a 2 h post) |
 | `DRINK` / `EAT` + why | `bound`, `AH won't take it`, or `deposit too high` |
-| `NO DEPOSIT` | the deposit is unknown: the game hasn't given one (it only does at the open auction house), so there's no LIST verdict |
+| `DEPOSIT?` | the deposit is unknown: the game hasn't given one (it only does at the open auction house), so there's no LIST verdict |
 | `ASK` | the game can't say yet whether the auction house takes it; open the auction house |
 | `no price scan` | PriceLog has no price for it yet; there's no guess |
 | `VENDOR Mote of Unstable Magic x5 2s 0c` | the item sells (price each) to a vendor (Mote of Unstable Magic does), so there's no LIST / DRINK verdict |
@@ -29,7 +29,7 @@ How it decides:
   non-English client, gets the worse 15% and the box says `AH · house unknown, 15% assumed`.
 - **The deposit** is read live from the game while the auction house is open, for the duration you picked in Blizzard's sell
   frame when that's readable. Otherwise it uses the first option, which is **2 hours** on Forever (the choices are 2 / 8 / 24 h).
-  Each line says which, e.g. `10s50c/2h` (deposit / post length). Without a deposit from the game the line says `NO DEPOSIT` and gives no
+  Each line says which, e.g. `10s50c/2h` (deposit / post length). Without a deposit from the game the line starts with `DEPOSIT?` and gives no
   LIST verdict. The deposit is never hard-coded.
 - Item tooltips get a small `Water Bill: ~40c each before AH cut` line.
 

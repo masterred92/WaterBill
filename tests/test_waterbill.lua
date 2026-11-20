@@ -47,8 +47,10 @@ W.fire("BAG_UPDATE_DELAYED")
 check(by[8079] ~= WB.stacks[1] or true, "rescan")
 local s1 = WB.stacks[1]
 check(s1.verdict == "nodeposit" and s1.worth == 1400 and s1.deposit == nil, "away from the AH: no deposit, so no LIST verdict")
-check(visible(row.lineText[1], 222):find("^NO DEPOSIT ") and visible(row.lineText[1], 222):find("~14s 0c", 1, true) and not row.lineText[1]:find("LIST"),
-  "WB fit: no deposit away from the AH: NO DEPOSIT + worth visible at 222 px")
+local function noNoDeposit() for _, l in ipairs(WB.lines) do if l:find("NO DEPOSIT", 1, true) then return false end end return true end
+check(visible(row.lineText[1], 222):find("^DEPOSIT%? ") and visible(row.lineText[1], 222):find("~14s 0c", 1, true) and not row.lineText[1]:find("LIST"),
+  "WB fit: no deposit away from the AH: DEPOSIT? + worth visible at 222 px")
+check(noNoDeposit(), "WB fit: unknown deposit never says NO DEPOSIT (reads as 'none needed')")
 check(not row.headText:find("LIST"), "no LIST headline without a deposit")
 
 -- At the AH: live deposit; a cheap stack is not worth it; the AH refusing an item turns it into DRINK.
@@ -131,8 +133,9 @@ check(row.headText:find("LIST ~") and row.statusText:find("^AH · ") ~= nil, "he
 
 -- Deposit is never invented: no live answer -> nil.
 W.deposit = nil; W.fire("BAG_UPDATE_DELAYED")
-check(WB.stacks[1].deposit == nil and WB.stacks[1].verdict == "nodeposit" and visible(row.lineText[1], 222):find("^NO DEPOSIT "),
-  "WB fit: AH open, no deposit from the game: NO DEPOSIT visible at 222 px, no LIST")
+check(WB.stacks[1].deposit == nil and WB.stacks[1].verdict == "nodeposit" and visible(row.lineText[1], 222):find("^DEPOSIT%? ")
+  and visible(row.lineText[1], 222):find("~" .. WB.Money(WB.stacks[1].worth), 1, true) and noNoDeposit(),
+  "WB fit: AH open, no deposit from the game: DEPOSIT? + worth visible at 222 px, never NO DEPOSIT, no LIST")
 
 -- Combat: hidden; /frost water waits.
 W.combat = true; W.fire("PLAYER_REGEN_DISABLED")

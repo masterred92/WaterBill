@@ -192,11 +192,11 @@ end
 
 -- One short line per stack (VISUAL_SPEC section 9): VERDICT, item, xN, then the figures. The verdict word comes first and
 -- the figures last; when the line is too wide for the box, the ITEM NAME is shortened with "…" (never the figures), so the
--- price, the deposit (or NO DEPOSIT) and the reason always stay visible. "Conjured " is left off (every item here is
+-- price, the deposit (or DEPOSIT? when it's unknown) and the reason always stay visible. "Conjured " is left off (every item here is
 -- conjured); tooltips keep the full name.
 --   LIST Crystal Water x40 ~32s 0c · 10s50c/2h      (worth before the AH cut · deposit / post length)
 --   DRINK Sparkling Water x20 · deposit too high     EAT Cinnamon Roll x20 · AH won't take it   DRINK … · bound
---   VENDOR Mote of Unstable Magic x5 2s 0c            NO DEPOSIT Crystal Water x40 ~32s 0c      ASK Crystal Water x40 ~32s 0c
+--   VENDOR Mote of Unstable Magic x5 2s 0c            DEPOSIT? Crystal Water x40 ~32s 0c        ASK Crystal Water x40 ~32s 0c
 --   Crystal Water x40 · no price scan                 Crystal Water x40 · item data loading
 WB.TEXT_W = 218   -- body line width: FrostSuite row 240 - 2 x 9, less 4 px so the client never adds its own "..."
 local measure
@@ -234,7 +234,7 @@ function WB.LineFor(s)
   elseif v == "DRINK" or v == "EAT" then
     return WB.Fit(word("d8f3ff", v == "EAT" and L["EAT"] or L["DRINK"]), name, n .. (s.short and (" · " .. s.short) or ""))
   elseif v == "vendor" then return WB.Fit(word("b8b8b8", L["VENDOR"]), name, ("%s %s"):format(n, WB.Money(s.vendor)))
-  elseif v == "nodeposit" then return WB.Fit(word("bcd3e6", L["NO DEPOSIT"]), name, ("%s ~%s"):format(n, WB.Money(s.worth)))
+  elseif v == "nodeposit" then return WB.Fit(word("bcd3e6", L["DEPOSIT?"]), name, ("%s ~%s"):format(n, WB.Money(s.worth)))
   elseif v == "ask" then return WB.Fit(word("bcd3e6", L["ASK"]), name, ("%s ~%s"):format(n, WB.Money(s.worth)))
   elseif v == "noprice" then return WB.Fit("", name, n .. " · " .. L["no price scan"])
   end
