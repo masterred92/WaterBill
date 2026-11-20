@@ -1,0 +1,11 @@
+# BigWigsMods/packager config. Not used yet: Kenny hasn't OK'd publishing, so there is no release workflow in this repo.
+package-as: WaterBill
+
+ignore:
+  - tests
+  - tools
+  - .luacheckrc
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown

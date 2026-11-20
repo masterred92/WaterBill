@@ -1,0 +1,18 @@
+## Interface: 16001
+## Title: Water Bill
+## Notes: Should your conjured water and food go on the auction house or down your throat? A price check against your own PriceLog scans and the game's live deposit, shown at the auction house and mailbox. Part of the Frost Suite; works alone.
+## Author: Kenny
+## Version: 1.0.0
+## SavedVariables: KennyWaterBillDB
+## OptionalDeps: PriceLog
+## X-License: MIT
+## IconTexture: Interface\Icons\INV_Drink_18
+## X-Category: Auction
+## X-Website: https://github.com/masterred92/WaterBill
+
+Libs\KennyShared\Compat.lua
+Libs\KennyShared\Core.lua
+Libs\KennyShared\Hub.lua
+Libs\FrostSuite\FrostSuite.lua
+Locales\enUS.lua
+WaterBill.lua
