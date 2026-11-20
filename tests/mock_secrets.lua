@@ -9,7 +9,7 @@
 --     player's own casts plain, but tests can switch on S.castSecretInCombat (spellID arrives as a secret value in combat)
 --     or S.castAlways[id] (always secret) to prove the addons fail visibly.
 -- Defaults are the strict case for auras: restrictions on, nothing never-secret.
--- Canonical: /workspace/wow-addons/frost-suite-lib/tests/mock_secrets.lua (identical in every suite addon).
+-- Canonical: frost-suite-lib/tests/mock_secrets.lua (identical in every suite addon).
 local S = {}
 
 function S.install(M)

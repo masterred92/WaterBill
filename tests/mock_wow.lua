@@ -1,5 +1,5 @@
 -- Minimal mock of the WoW: Forever client for offline tests (Frost Suite copy). Not Blizzard code; just enough surface.
--- Canonical: /workspace/wow-addons/frost-suite-lib/tests/mock_wow.lua (identical in every suite addon).
+-- Canonical: frost-suite-lib/tests/mock_wow.lua (identical in every suite addon).
 -- Host addons (DBM, BigWigs, Details, Questie, LibStub...) are mocked in each test file.
 local M = {}
 M.now, M.clock, M.combat, M.encounter, M.lockdown = 1790000000, 1000, false, false, false

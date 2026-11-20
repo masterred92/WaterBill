@@ -5,10 +5,11 @@
 #     same MINOR would be silently ignored in game whenever another addon loads the older copy first. Libs/FrostSuite/HASHES
 #     records the sha256 of FrostSuite.lua for every MINOR; the current MINOR must be recorded with the current content,
 #     VERSION must equal MINOR, and no two MINORs may share a hash.
-# Usage: tools/check_suite_lib.sh [canonical folder]   (default /workspace/wow-addons/frost-suite-lib; "none" = skip drift check, e.g. in CI)
+# Usage: tools/check_suite_lib.sh [canonical folder]
+# The folder may also be set as FROST_SUITE_LIB. Pass "none" to skip the drift check (e.g. in CI).
 set -e
 cd "$(dirname "$0")/.."
-CANON=${1:-/workspace/wow-addons/frost-suite-lib}
+CANON=${1:-${FROST_SUITE_LIB:-}}
 status=0
 LIB=Libs/FrostSuite
 MINOR=$(sed -n 's/^local MAJOR, MINOR = "FrostSuite-1.0", \([0-9][0-9]*\)$/\1/p' $LIB/FrostSuite.lua)
@@ -20,7 +21,12 @@ if [ -z "$REC" ]; then echo "FAIL: MINOR $MINOR is not recorded in $LIB/HASHES";
 elif [ "$REC" != "$SUM" ]; then echo "FAIL: FrostSuite.lua changed without a MINOR bump (MINOR $MINOR is recorded with a different hash)"; status=1; fi
 DUP=$(grep -v '^#' $LIB/HASHES | awk '{print $2}' | sort | uniq -d)
 [ -z "$DUP" ] || { echo "FAIL: two MINORs share one hash in $LIB/HASHES"; status=1; }
-if [ "$CANON" != "none" ]; then
+if [ "$CANON" = "none" ]; then
+  :
+elif [ -z "$CANON" ]; then
+  echo "FAIL: no canonical folder (pass one, or set FROST_SUITE_LIB; use 'none' to skip)"
+  status=1
+else
   for f in FrostSuite.lua VERSION HASHES; do cmp -s "$CANON/$f" "$LIB/$f" || { echo "DRIFT: $LIB/$f"; status=1; }; done
   for f in tests/mock_wow.lua tests/mock_secrets.lua tests/test_frostsuite.lua tools/check_suite_lib.sh tools/verify_unit_events.py tools/verify_media.sh; do
     cmp -s "$CANON/$f" "$f" || { echo "DRIFT: $f"; status=1; }

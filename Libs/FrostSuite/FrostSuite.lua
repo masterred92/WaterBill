@@ -1,12 +1,12 @@
 -- FrostSuite-1.0: the shared dock, flash rule and /frost command for Kenny's Frost Mage suite. Written from scratch (MIT).
--- Canonical copy: /workspace/wow-addons/frost-suite-lib/FrostSuite.lua. Every suite addon embeds an identical copy in
+-- Canonical copy: frost-suite-lib/FrostSuite.lua. Every suite addon embeds an identical copy in
 -- Libs/FrostSuite (tools/check_suite_lib.sh fails on drift). Do not edit a copy.
 -- Load rule (LibStub style, without needing LibStub): all copies share one global table, FrostSuite_1_0. The copy with the
 -- highest MINOR installs its functions; an older or equal copy returns early. State (rows, anchor) lives in the table, so an
 -- upgrade keeps it. Each addon works alone: with one addon loaded the dock is a single row.
 -- Look and numbers come from UI Bot's VISUAL_SPEC.md (v1): FS.C, FS.FONT, FS.PALETTE and FS.ADDONS are the drop-in tables.
 local _, ns = ...
-local MAJOR, MINOR = "FrostSuite-1.0", 2
+local MAJOR, MINOR = "FrostSuite-1.0", 3
 local FS = _G.FrostSuite_1_0
 if type(FS) ~= "table" then FS = {}; _G.FrostSuite_1_0 = FS end
 ns.FrostSuite = FS
