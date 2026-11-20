@@ -60,11 +60,12 @@ function WB.House()
   end
   return "unknown", WB.CUT.unknown, ("map %s not confirmed, zone name not usable (%s client)"):format(tostring(mapID), tostring(locale))
 end
-function WB.CutLabel()
+-- Short form for the box status: "faction 5% assumed", "neutral 15% assumed", "house unknown, 15% assumed".
+function WB.CutShort()
   local kind, cut = WB.House()
   local pct = math.floor(cut * 100 + 0.5)
-  if kind == "unknown" then return (L["house unknown: %d%% cut assumed"]):format(pct) end
-  return (kind == "neutral" and L["neutral house: %d%% cut assumed"] or L["faction house: %d%% cut assumed"]):format(pct)
+  if kind == "unknown" then return (L["house unknown, %d%% assumed"]):format(pct) end
+  return (kind == "neutral" and L["neutral %d%% assumed"] or L["faction %d%% assumed"]):format(pct)
 end
 
 -- duration index (1-3) and whether it came from the player's pick in the sell frame
@@ -170,9 +171,9 @@ function WB.Judge(s)
   if vendor == nil then s.verdict = "loading"; return s end
   if vendor > 0 then s.verdict = "vendor"; return s end
   local drink = WB.ITEMS[s.itemID] == "food" and "EAT" or "DRINK"
-  if s.bound then s.verdict, s.why = drink, L["bound"]; return s end
+  if s.bound then s.verdict, s.why, s.short = drink, L["bound"], L["bound"]; return s end
   s.valid = WB.AHTakes(s)
-  if s.valid == false then s.verdict, s.why = drink, L["the AH won't take it"]; return s end
+  if s.valid == false then s.verdict, s.why, s.short = drink, L["the AH won't take it"], L["AH won't take it"]; return s end
   s.price = WB.Price(s.itemID)
   if not s.price then s.verdict = "noprice"; return s end
   s.worth = s.price * s.count
@@ -184,34 +185,60 @@ function WB.Judge(s)
   s.net = s.worth * (1 - s.cut) - s.deposit
   local net = s.net
   s.verdict = net > 0 and "LIST" or drink
-  if net <= 0 then s.why = L["not worth the deposit"] end
+  if net <= 0 then s.why, s.short = L["not worth the deposit"], L["deposit too high"] end
   return s
 end
 
-function WB.Post(h) return (L["for a %d h post"]):format(h or 2) end
 
--- One short line per stack (VISUAL_SPEC section 9): "VERDICT item xN price", the verdict word first and coloured, then
--- the reason after " · ". The box cuts a long line with "..." (FrostSuite r4), so the important part comes first.
--- "Conjured " is left off the panel name (every item here is conjured); tooltips keep the full name.
-function WB.ShortName(s)
-  local name = s.name or ("item " .. s.itemID)
-  return (name:gsub("^" .. L["Conjured"] .. " ", "")) .. " x" .. s.count
-end
-function WB.LineFor(s)
-  local name = WB.ShortName(s)
-  local v = s.verdict
-  if v == "LIST" then
-    return ("|cffffd100%s|r %s ~%s · %s %s %s"):format(L["LIST"], name, WB.Money(s.worth),
-      L["deposit"], WB.Money(s.deposit), WB.Post(s.hours))
-  elseif v == "DRINK" or v == "EAT" then
-    return ("|cffd8f3ff%s|r %s · %s"):format(v == "EAT" and L["EAT"] or L["DRINK"], name, s.why or "")
-  elseif v == "vendor" then return ("|cffb8b8b8%s|r %s %s"):format(L["VENDOR"], name, WB.Money(s.vendor))
-  elseif v == "noprice" then return ("%s · %s"):format(name, L["no price scan"])
-  elseif v == "nodeposit" then
-    return ("%s ~%s · %s, %s"):format(name, WB.Money(s.worth), L["before AH cut"], WB.ahOpen and L["deposit unknown"] or L["deposit unknown (open the AH)"])
-  elseif v == "ask" then return ("%s ~%s · %s, %s"):format(name, WB.Money(s.worth), L["before AH cut"], L["the AH answers when it's open"])
+-- One short line per stack (VISUAL_SPEC section 9): VERDICT, item, xN, then the figures. The verdict word comes first and
+-- the figures last; when the line is too wide for the box, the ITEM NAME is shortened with "…" (never the figures), so the
+-- price, the deposit (or NO DEPOSIT) and the reason always stay visible. "Conjured " is left off (every item here is
+-- conjured); tooltips keep the full name.
+--   LIST Crystal Water x40 ~32s 0c · 10s50c/2h      (worth before the AH cut · deposit / post length)
+--   DRINK Sparkling Water x20 · deposit too high     EAT Cinnamon Roll x20 · AH won't take it   DRINK … · bound
+--   VENDOR Mote of Unstable Magic x5 2s 0c            NO DEPOSIT Crystal Water x40 ~32s 0c      ASK Crystal Water x40 ~32s 0c
+--   Crystal Water x40 · no price scan                 Crystal Water x40 · item data loading
+WB.TEXT_W = 218   -- body line width: FrostSuite row 240 - 2 x 9, less 4 px so the client never adds its own "..."
+local measure
+function WB.Width(text)
+  if not measure and row then measure = row:CreateFontString(nil, "OVERLAY", FS.FONT.BODY); measure:Hide(); WB.measure = measure end
+  if measure then
+    measure:SetText(text)
+    local ok, w = pcall(function() return measure:GetStringWidth() end)
+    if ok and type(w) == "number" and not C.IsSecret(w) then return w end
   end
-  return ("%s · %s"):format(name, L["item data loading"])
+  return #(text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) * 6
+end
+-- head .. name .. tail, with name cut (whole characters, then "…") until it fits WB.TEXT_W.
+function WB.Fit(head, name, tail)
+  local line = head .. name .. tail
+  if WB.Width(line) <= WB.TEXT_W then return line end
+  local cut = name
+  while cut ~= "" do
+    cut = cut:sub(1, -2):gsub("[\128-\255]+$", ""):gsub("%s+$", "")
+    line = head .. cut .. "…" .. tail
+    if WB.Width(line) <= WB.TEXT_W then return line end
+  end
+  return head .. "…" .. tail
+end
+function WB.ShortName(s)
+  return ((s.name or ("item " .. s.itemID)):gsub("^" .. L["Conjured"] .. " ", ""))
+end
+-- deposit as one token: 10s50c/2h
+function WB.DepositToken(s) return (WB.Money(s.deposit):gsub(" ", "")) .. "/" .. (s.hours or 2) .. "h" end
+local function word(hex, text) return ("|cff%s%s|r "):format(hex, text) end
+function WB.LineFor(s)
+  local name, v, n = WB.ShortName(s), s.verdict, " x" .. s.count
+  if v == "LIST" then
+    return WB.Fit(word("ffd100", L["LIST"]), name, ("%s ~%s · %s"):format(n, WB.Money(s.worth), WB.DepositToken(s)))
+  elseif v == "DRINK" or v == "EAT" then
+    return WB.Fit(word("d8f3ff", v == "EAT" and L["EAT"] or L["DRINK"]), name, n .. (s.short and (" · " .. s.short) or ""))
+  elseif v == "vendor" then return WB.Fit(word("b8b8b8", L["VENDOR"]), name, ("%s %s"):format(n, WB.Money(s.vendor)))
+  elseif v == "nodeposit" then return WB.Fit(word("bcd3e6", L["NO DEPOSIT"]), name, ("%s ~%s"):format(n, WB.Money(s.worth)))
+  elseif v == "ask" then return WB.Fit(word("bcd3e6", L["ASK"]), name, ("%s ~%s"):format(n, WB.Money(s.worth)))
+  elseif v == "noprice" then return WB.Fit("", name, n .. " · " .. L["no price scan"])
+  end
+  return WB.Fit("", name, n .. " · " .. L["item data loading"])
 end
 
 function WB.Showing() return (WB.ahOpen or WB.mailOpen or WB.asked) and not C.InCombat() end
@@ -236,7 +263,7 @@ function WB.Update()
   FS.Headline(KEY, listWorth > 0 and ("%s ~%s %s"):format(L["LIST"], WB.Money(listWorth), L["before AH cut"]) or L["Water Bill"], listWorth > 0 and "CoinGold" or "Snow")
   FS.ClearLines(KEY)
   for i, l in ipairs(lines) do FS.Line(KEY, i, l) end
-  FS.Status(KEY, WB.ahOpen and (L["at the AH"] .. " · " .. WB.CutLabel()) or "", "Mist")
+  FS.Status(KEY, WB.ahOpen and (L["AH"] .. " · " .. WB.CutShort()) or "", "Mist")   -- e.g. "AH · faction 5% assumed"
   FS.State(KEY, "active")
 end
 -- Lines start at y -44 and step 14 (FrostSuite r4 BodyHeight): 44 + 14 per line + 6 under the last one. A long AH status

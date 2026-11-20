@@ -1,18 +1,19 @@
 # Water Bill
 
 Should your conjured water and food go on the auction house, or down your throat? A Frost Suite box for **WoW: Forever**
-(Interface 16001). Version 1.0.0. Part of Kenny's Frost Suite, and it works alone.
+(Interface 16001). Version 1.0.1. Part of Kenny's Frost Suite, and it works alone.
 
 It shows up when you open the **auction house** or a **mailbox**, or when you type `/frost water`, and never in combat.
-One line per item in your bags:
+One line per item in your bags. A long item name is shortened with `…` so the figures always fit:
 
 | Line | Means |
 | --- | --- |
-| `LIST Conjured Crystal Water x35: ~14s before AH cut, deposit 10s 50c for a 2 h post` | after the AH cut (assumed: 5% faction, 15% neutral), your last price scan says it's worth more than the deposit |
-| `DRINK` / `EAT` + why | bound, the auction house won't take it, or it isn't worth the deposit |
-| `deposit unknown` | the game hasn't given a deposit (it only does at the open auction house), so there's no LIST verdict |
+| `LIST Crystal Water x35 ~14s 0c · 10s50c/2h` | after the AH cut (assumed: 5% faction, 15% neutral), your last price scan says it's worth more than the deposit (here 10s 50c for a 2 h post) |
+| `DRINK` / `EAT` + why | `bound`, `AH won't take it`, or `deposit too high` |
+| `NO DEPOSIT` | the deposit is unknown: the game hasn't given one (it only does at the open auction house), so there's no LIST verdict |
+| `ASK` | the game can't say yet whether the auction house takes it; open the auction house |
 | `no price scan` | PriceLog has no price for it yet; there's no guess |
-| `vendor price 2s` | the item sells to a vendor (Mote of Unstable Magic does), so there's no LIST / DRINK verdict |
+| `VENDOR Mote of Unstable Magic x5 2s 0c` | the item sells (price each) to a vendor (Mote of Unstable Magic does), so there's no LIST / DRINK verdict |
 
 How it decides:
 
@@ -25,10 +26,10 @@ How it decides:
   or Everlook, the same rates as NeutralFlip and Forever guides. The house comes from your map, using map IDs confirmed in
   the game's data (build 70862): Stranglethorn Vale, Tanaris and Winterspring are neutral, and the other zones and cities are
   faction. Zone names are only used on an English client. Anything else, for example a map Water Bill doesn't know on a
-  non-English client, gets the worse 15% and the box says `house unknown: 15% cut assumed`.
+  non-English client, gets the worse 15% and the box says `AH · house unknown, 15% assumed`.
 - **The deposit** is read live from the game while the auction house is open, for the duration you picked in Blizzard's sell
   frame when that's readable. Otherwise it uses the first option, which is **2 hours** on Forever (the choices are 2 / 8 / 24 h).
-  Each line says which, e.g. `for a 2 h post`. Without a deposit from the game the line says `deposit unknown` and gives no
+  Each line says which, e.g. `10s50c/2h` (deposit / post length). Without a deposit from the game the line says `NO DEPOSIT` and gives no
   LIST verdict. The deposit is never hard-coded.
 - Item tooltips get a small `Water Bill: ~40c each before AH cut` line.
 

@@ -2,7 +2,7 @@
 ## Title: Water Bill
 ## Notes: Should your conjured water and food go on the auction house or down your throat? A price check against your own PriceLog scans and the game's live deposit, shown at the auction house and mailbox. Part of the Frost Suite; works alone.
 ## Author: Kenny
-## Version: 1.0.0
+## Version: 1.0.1
 ## SavedVariables: KennyWaterBillDB
 ## OptionalDeps: PriceLog
 ## X-License: MIT

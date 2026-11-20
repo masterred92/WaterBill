@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1 (Nov 20, 2026)
+
+- Layout fixes (FrostSuite-1.0 r4, shared by the suite): a status too long to sit beside the title moves to its own line instead of running into it, and box heights fit their text.
+- One short line per item: verdict first, then the item, count and figures. A long item name is shortened with `…` so the price and deposit stay visible, e.g. `LIST Crystal Water x40 ~32s 0c · 10s50c/2h`.
+- `NO DEPOSIT` and `ASK` verdict words when the game gives no deposit or can't say whether the auction house takes the item.
+- Shorter auction-house status, e.g. `AH · faction 5% assumed`.
+
 ## 1.0.0 (Nov 20, 2026)
 
 First release, part of the Frost Suite.

@@ -9,6 +9,18 @@ local row = FS.rows.WaterBill
 local hub = ns.Hub
 local prices = {}
 hub.RegisterPrices("PriceLog", function(id) return prices[id] end)
+-- Game-font line fit: the addon measures with a FontString; here it gets real 12 pt Friz Quadrata widths, and visible()
+-- cuts a line the way the client does at the 222 px text width (characters off the end, then "…").
+local FRIZ = dofile("tests/friz12_widths.lua")
+local function chars(t) local out = {}; for ch in t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gmatch("[%z\1-\127\194-\244][\128-\191]*") do out[#out + 1] = ch end; return out end
+local function friz(t) local w = 0; for _, ch in ipairs(chars(t)) do w = w + (FRIZ[ch] or 7) end; return w end
+local function visible(t, width)
+  local c = chars(t)
+  if friz(t) <= width then return table.concat(c) end
+  while #c > 0 and friz(table.concat(c) .. "…") > width do c[#c] = nil end
+  return table.concat(c) .. "…"
+end
+WB.Width("x"); WB.measure.GetStringWidth = function(self) return friz(self.text_ or "") end
 
 W.items = { [8079] = { name = "Conjured Crystal Water", sellPrice = 0 }, [8076] = { name = "Conjured Sweet Roll", sellPrice = 0 },
   [5350] = { name = "Conjured Water", sellPrice = 0 }, [274964] = { name = "Mote of Unstable Magic", sellPrice = 200 } }
@@ -35,8 +47,8 @@ W.fire("BAG_UPDATE_DELAYED")
 check(by[8079] ~= WB.stacks[1] or true, "rescan")
 local s1 = WB.stacks[1]
 check(s1.verdict == "nodeposit" and s1.worth == 1400 and s1.deposit == nil, "away from the AH: no deposit, so no LIST verdict")
-check(row.lineText[1]:find("before AH cut") and row.lineText[1]:find("deposit unknown %(open the AH%)") and not row.lineText[1]:find("LIST"),
-  "labelled before AH cut + deposit unknown")
+check(visible(row.lineText[1], 222):find("^NO DEPOSIT ") and visible(row.lineText[1], 222):find("~14s 0c", 1, true) and not row.lineText[1]:find("LIST"),
+  "WB fit: no deposit away from the AH: NO DEPOSIT + worth visible at 222 px")
 check(not row.headText:find("LIST"), "no LIST headline without a deposit")
 
 -- At the AH: live deposit; a cheap stack is not worth it; the AH refusing an item turns it into DRINK.
@@ -46,24 +58,32 @@ _G.GetSubZoneText = function() return sub end
 _G.C_Map = { GetBestMapForUnit = function() return map end }
 W.fire("MAIL_CLOSED"); W.ahOpen = true; W.deposit = 30; W.fire("AUCTION_HOUSE_SHOW"); W.advance(0.3)
 s1 = WB.stacks[1]
-check(s1.deposit == 1050 and s1.verdict == "LIST" and row.lineText[1]:find("deposit 10s 50c for a 2 h post"), "live deposit, 2 h post by default")
+check(s1.deposit == 1050 and s1.verdict == "LIST" and row.lineText[1]:find("· 10s50c/2h", 1, true), "live deposit, 2 h post by default")
+check(visible(row.lineText[1], 222):find("~14s 0c · 10s50c/2h", 1, true) ~= nil and friz(row.lineText[1]) <= 222,
+  "WB fit: LIST line keeps worth and deposit visible at 222 px")
+W.items[8079].name = "Conjured Crystal Water of the Very Long Name Indeed"; W.fire("BAG_UPDATE_DELAYED")
+local long = visible(row.lineText[1], 222)
+check(long:find("…", 1, true) and long:find("x35 ~14s 0c · 10s50c/2h", 1, true) and friz(row.lineText[1]) <= 222,
+  "WB fit: a long item name is cut with …, the figures stay visible")
+W.items[8079].name = "Conjured Crystal Water"; W.fire("BAG_UPDATE_DELAYED")
 check(row.lineText[1]:find("|cffffd100LIST|r", 1, true) ~= nil, "LIST text is CoinGold ffd100")
 check(math.abs(s1.net - (1400 * 0.95 - 1050)) < 0.01 and s1.house == "faction", "faction house: 5% cut applied in the comparison")
-check(row.statusText:find("faction house: 5% cut assumed", 1, true) ~= nil, "faction rate labelled as an assumption")
+check(row.statusText == "AH · faction 5% assumed" and friz(row.statusText) <= 222, "faction rate labelled as an assumption, short status fits a line")
 W.advance(1.1)
 check(not row.status.shown and row.statusLine.shown and row.statusSlot == #WB.lines + 1
-  and row.h == 44 + 14 * (#WB.lines + 1) + 6, "long AH status moves under the verdict lines; box grows one line")
+  and row.h == 44 + 14 * (#WB.lines + 1) + 6, "AH status too wide beside the title + padlock: moves under the verdict lines; box grows one line")
 -- worth 1200, deposit 1050: faction 1140 > 1050 = LIST; neutral / unknown 1020 < 1050 = not worth it.
 prices[8079] = { p = 1200 / 35, t = 100 }; W.fire("BAG_UPDATE_DELAYED")
 check(WB.stacks[1].verdict == "LIST", "faction house (5%): LIST")
 zone, sub = "Stranglethorn Vale", "Booty Bay"; W.fire("BAG_UPDATE_DELAYED")
 check(WB.stacks[1].house == "neutral" and WB.stacks[1].cut == 0.15 and WB.stacks[1].verdict == "DRINK", "neutral house by zone name: 15%, not worth it")
-check(row.statusText:find("neutral house: 15% cut assumed", 1, true) ~= nil, "neutral rate labelled as an assumption")
+check(row.statusText == "AH · neutral 15% assumed", "neutral rate labelled as an assumption")
+check(visible(row.lineText[1], 222):find("· deposit too high", 1, true) ~= nil, "WB fit: DRINK reason (deposit too high) visible at 222 px")
 zone, sub, map = "Somewhere", "", 1446; W.fire("BAG_UPDATE_DELAYED")
 check(WB.stacks[1].house == "neutral", "neutral house by uiMap (Tanaris 1446)")
 zone, sub, map = nil, nil, nil; W.fire("BAG_UPDATE_DELAYED")
 check(WB.stacks[1].house == "unknown" and WB.stacks[1].cut == 0.15 and WB.stacks[1].verdict == "DRINK", "unknown house: the worse 15%")
-check(row.statusText:find("house unknown: 15% cut assumed", 1, true) ~= nil, "unknown house says so")
+check(row.statusText == "AH · house unknown, 15% assumed" and friz(row.statusText) <= 222, "unknown house says so, and fits a line")
 local secretZone = {}; W.secret[secretZone] = true
 _G.GetRealZoneText = function() return secretZone end; W.fire("BAG_UPDATE_DELAYED")
 check(WB.stacks[1].house == "unknown", "secret zone text: unknown, 15%")
@@ -93,21 +113,26 @@ local seen
 local orig = C_AuctionHouse.CalculateCommodityDeposit
 C_AuctionHouse.CalculateCommodityDeposit = function(id, d, q) seen = d; return orig(id, d, q) end
 W.fire("BAG_UPDATE_DELAYED")
-check(seen == 3 and WB.stacks[1].hours == 24 and row.lineText[1]:find("for a 24 h post"), "picked 24 h: deposit asked for index 3, labelled 24 h")
+check(seen == 3 and WB.stacks[1].hours == 24 and row.lineText[1]:find("/24h", 1, true), "picked 24 h: deposit asked for index 3, labelled 24 h")
 cv = 9; W.fire("BAG_UPDATE_DELAYED")
-check(seen == 1 and row.lineText[1]:find("for a 2 h post"), "unreadable pick: 2 h")
+check(seen == 1 and row.lineText[1]:find("/2h", 1, true), "unreadable pick: 2 h")
 _G.C_CVar = nil; C_AuctionHouse.CalculateCommodityDeposit = orig; W.fire("BAG_UPDATE_DELAYED")
 local cheap
 for _, s in ipairs(WB.stacks) do if s.itemID == 5350 then cheap = s end end
 check(cheap.verdict == "DRINK" and cheap.why == "not worth the deposit", "worth less than the deposit: DRINK")
 W.ahRefuse = { [8079] = true }; W.fire("BAG_UPDATE_DELAYED")
 check(WB.stacks[1].verdict == "DRINK" and WB.stacks[1].why == "the AH won't take it", "IsSellItemValid false: DRINK")
+check(visible(row.lineText[1], 222):find("· AH won't take it", 1, true) ~= nil, "WB fit: DRINK reason (AH won't take it) visible at 222 px")
 W.ahRefuse = nil; W.fire("BAG_UPDATE_DELAYED")
-check(row.headText:find("LIST ~") and row.statusText:find("^at the AH") ~= nil, "headline sums what's worth listing")
+local valid = C_AuctionHouse.IsSellItemValid; C_AuctionHouse.IsSellItemValid = nil; W.fire("BAG_UPDATE_DELAYED")
+check(WB.stacks[1].verdict == "ask" and visible(row.lineText[1], 222):find("^ASK .* x35 ~") ~= nil, "WB fit: AH can't say if it takes it: ASK + worth visible at 222 px")
+C_AuctionHouse.IsSellItemValid = valid; W.fire("BAG_UPDATE_DELAYED")
+check(row.headText:find("LIST ~") and row.statusText:find("^AH · ") ~= nil, "headline sums what's worth listing")
 
 -- Deposit is never invented: no live answer -> nil.
 W.deposit = nil; W.fire("BAG_UPDATE_DELAYED")
-check(WB.stacks[1].deposit == nil and WB.stacks[1].verdict == "nodeposit" and row.lineText[1]:find("deposit unknown"), "AH open, no deposit from the game: deposit unknown, no LIST")
+check(WB.stacks[1].deposit == nil and WB.stacks[1].verdict == "nodeposit" and visible(row.lineText[1], 222):find("^NO DEPOSIT "),
+  "WB fit: AH open, no deposit from the game: NO DEPOSIT visible at 222 px, no LIST")
 
 -- Combat: hidden; /frost water waits.
 W.combat = true; W.fire("PLAYER_REGEN_DISABLED")
