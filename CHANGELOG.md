@@ -8,6 +8,7 @@ First release, part of the Frost Suite.
 - Live auction-house check (`IsSellItemValid`), PriceLog prices through the Kenny hub ("before AH cut").
 - Live deposit at the AH for your picked duration (or 2 h, labelled "for a N h post"); no deposit = "deposit unknown", no LIST.
 - LIST only when price × count after the AH cut beats the deposit. The cut is assumed from player sources, not game data:
-  5% at a faction house, 15% at the neutral (goblin) house, 15% when the house can't be told apart (said in the box).
+  5% at a faction house, 15% at the neutral (goblin) house, 15% when the house can't be told apart (said in the box). The house comes from map IDs confirmed in
+  UiMap 70862, with zone names used only on English clients.
   LIST in CoinGold.
 - Shown at the auction house, mailbox or `/frost water`; never in combat. Item tooltip line. `/frost water debug`.

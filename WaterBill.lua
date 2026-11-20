@@ -13,8 +13,8 @@
 --     (GlobalStrings 70862 AUCTION_DURATION_ONE/TWO/THREE); every deposit is labelled "for a N h post".
 --   * LIST needs price x count x (1 - AH cut) > deposit. The cut is an ASSUMPTION from player sources, not game data (the
 --     UI only has the label AUCTION_HOUSE_CUT_COLON, no rate): 5% at a faction house, 15% at the neutral (goblin) house,
---     the same rates Kenny's NeutralFlip uses. The house is told apart the way NeutralFlip does it (uiMap of the three
---     goblin zones, else the zone / subzone name); when it can't be told, the worse 15% is used and the box says so.
+--     the same rates Kenny's NeutralFlip uses. The house comes from the uiMap (IDs confirmed in UiMap 70862), else the zone
+--     name on an English client only; when it can't be told, the worse 15% is used and the box says so.
 --     Displayed prices stay "before AH cut".
 -- It never lists, casts, sells or moves anything. Shown at the AH, at the mailbox or with /frost water; never in combat.
 local ADDON, ns = ...
@@ -29,21 +29,34 @@ local SCHEMA = 1
 WB.HOURS = { 2, 8, 24 } -- AUCTION_DURATION_ONE/TWO/THREE, GlobalStrings 70862
 -- AH cut by house: assumptions from player sources (NeutralFlip, Forever guides), not game data.
 WB.CUT = { faction = 0.05, neutral = 0.15, unknown = 0.15 }
--- Same detection as NeutralFlip: Classic-era uiMapIDs (Stranglethorn Vale 1434, Tanaris 1446, Winterspring 1452; not
--- confirmed for Forever), then the English town / zone names.
+-- Which house: confirmed uiMapIDs first (UiMap + UiMapAssignment, build 70862, saved in wow-research/raw/deb-db2/70862).
+-- The goblin towns have no uiMap of their own: Booty Bay (area 35) is in Stranglethorn Vale (area 33 -> uiMap 1434),
+-- Gadgetzan (976) in Tanaris (440 -> 1446), Everlook (2255) in Winterspring (618 -> 1452) (AreaTable 70862).
 WB.NEUTRAL_MAPS = { [1434] = true, [1446] = true, [1452] = true }
+-- Every other zone / city / battleground uiMap in UiMap 70862 (Type 3 or 6): none of them holds a neutral auction house.
+WB.FACTION_MAPS = {}
+for _, id in ipairs({ 1411, 1412, 1413, 1416, 1417, 1418, 1419, 1420, 1421, 1422, 1423, 1424, 1425, 1426, 1427, 1428, 1429,
+  1430, 1431, 1432, 1433, 1435, 1436, 1437, 1438, 1439, 1440, 1441, 1442, 1443, 1444, 1445, 1447, 1448, 1449, 1450, 1451,
+  1453, 1454, 1455, 1456, 1457, 1458, 1459, 1460, 1461, 2482, 2521, 2524, 2548, 2652, 2665 }) do WB.FACTION_MAPS[id] = true end
+-- Name fallback (as NeutralFlip), trusted only on an English client: on any other locale a non-match proves nothing.
 WB.NEUTRAL_NAMES = { ["Booty Bay"] = true, ["Gadgetzan"] = true, ["Everlook"] = true,
   ["Tanaris"] = true, ["Winterspring"] = true, ["Stranglethorn Vale"] = true, ["The Cape of Stranglethorn"] = true }
+WB.ENGLISH = { enUS = true, enGB = true }
 
--- "faction" / "neutral" / "unknown", the cut for it, and how it was decided
+-- "faction" / "neutral" / "unknown", the cut for it, and how it was decided. "faction" only from a confirmed map or an
+-- English zone name; anything else is "unknown" (the worse 15%).
 function WB.House()
   local mapID = C_Map and C_Map.GetBestMapForUnit and C.SafeNumber(FS.Call(C_Map.GetBestMapForUnit, "player"))
   if mapID and WB.NEUTRAL_MAPS[mapID] then return "neutral", WB.CUT.neutral, "map " .. mapID end
+  if mapID and WB.FACTION_MAPS[mapID] then return "faction", WB.CUT.faction, "map " .. mapID end
   local function text(fn) local v = fn and FS.Call(fn); if type(v) == "string" and not C.IsSecret(v) then return v end end
-  local zone, sub = text(GetRealZoneText), text(GetSubZoneText)
-  if WB.NEUTRAL_NAMES[sub or ""] or WB.NEUTRAL_NAMES[zone or ""] then return "neutral", WB.CUT.neutral, "zone " .. (zone or "") .. "/" .. (sub or "") end
-  if (zone or "") == "" and (sub or "") == "" and not mapID then return "unknown", WB.CUT.unknown, "zone unreadable" end
-  return "faction", WB.CUT.faction, "zone " .. (zone or "") .. "/" .. (sub or "")
+  local zone, sub = text(GetRealZoneText) or "", text(GetSubZoneText) or ""
+  local locale = text(GetLocale)
+  if WB.ENGLISH[locale or ""] then
+    if WB.NEUTRAL_NAMES[sub] or WB.NEUTRAL_NAMES[zone] then return "neutral", WB.CUT.neutral, "zone " .. zone .. "/" .. sub end
+    if zone ~= "" or sub ~= "" then return "faction", WB.CUT.faction, "zone " .. zone .. "/" .. sub end
+  end
+  return "unknown", WB.CUT.unknown, ("map %s not confirmed, zone name not usable (%s client)"):format(tostring(mapID), tostring(locale))
 end
 function WB.CutLabel()
   local kind, cut = WB.House()

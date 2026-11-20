@@ -22,8 +22,10 @@ How it decides:
   price is labelled **before AH cut**. The LIST decision takes the auction house cut off first: price × count × (1 − cut)
   must beat the deposit. **The cut rates are assumptions from player sources, not game data**: the game has no API or UI
   text for the rate. Water Bill uses 5% at a faction house and 15% at the neutral (goblin) house in Booty Bay, Gadgetzan
-  or Everlook, the same rates as NeutralFlip and Forever guides. The house is recognised from the map or zone name, like
-  NeutralFlip does. If it can't be told apart, Water Bill uses the worse 15% and says `house unknown: 15% cut assumed`.
+  or Everlook, the same rates as NeutralFlip and Forever guides. The house comes from your map, using map IDs confirmed in
+  the game's data (build 70862): Stranglethorn Vale, Tanaris and Winterspring are neutral, and the other zones and cities are
+  faction. Zone names are only used on an English client. Anything else, for example a map Water Bill doesn't know on a
+  non-English client, gets the worse 15% and the box says `house unknown: 15% cut assumed`.
 - **The deposit** is read live from the game while the auction house is open, for the duration you picked in Blizzard's sell
   frame when that's readable. Otherwise it uses the first option, which is **2 hours** on Forever (the choices are 2 / 8 / 24 h).
   Each line says which, e.g. `for a 2 h post`. Without a deposit from the game the line says `deposit unknown` and gives no

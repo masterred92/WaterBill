@@ -60,6 +60,17 @@ local secretZone = {}; W.secret[secretZone] = true
 _G.GetRealZoneText = function() return secretZone end; W.fire("BAG_UPDATE_DELAYED")
 check(WB.stacks[1].house == "unknown", "secret zone text: unknown, 15%")
 _G.GetRealZoneText = function() return zone end
+-- Non-English client: names prove nothing; only confirmed uiMapIDs (UiMap 70862) decide.
+_G.GetLocale = function() return "deDE" end
+zone, sub, map = "Schlingendorntal", "Beutebucht", 9999; W.fire("BAG_UPDATE_DELAYED")
+check(WB.stacks[1].house == "unknown" and WB.stacks[1].cut == 0.15, "deDE in Booty Bay, unmatched map: unknown, 15%")
+zone, sub, map = "Orgrimmar", "", nil; W.fire("BAG_UPDATE_DELAYED")
+check(WB.stacks[1].house == "unknown", "deDE, no map: a zone name never means faction")
+map = 1434; W.fire("BAG_UPDATE_DELAYED")
+check(WB.stacks[1].house == "neutral" and WB.stacks[1].cut == 0.15, "confirmed neutral map (Stranglethorn Vale 1434): neutral")
+map = 1454; W.fire("BAG_UPDATE_DELAYED")
+check(WB.stacks[1].house == "faction" and WB.stacks[1].cut == 0.05, "confirmed faction map (Orgrimmar 1454): faction, 5%")
+_G.GetLocale = function() return "enUS" end; map = nil
 zone, sub = "Orgrimmar", "The Drag"; prices[8079] = { p = 40, t = 100 }; W.fire("BAG_UPDATE_DELAYED")
 -- faction 5% cut decides: worth 1100, deposit 1050 -> 1045 after the cut -> not worth it (would be LIST without the cut).
 prices[8079] = { p = 1100 / 35, t = 100 }; W.fire("BAG_UPDATE_DELAYED")
