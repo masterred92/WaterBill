@@ -11,8 +11,11 @@
 --     Duration: the one picked in Blizzard's sell frame (CVar auctionHouseDurationDropdown, which the sell frame itself
 --     reads: Blizzard_AuctionHouseSellFrame.lua) when readable, else index 1. On Forever 1/2/3 = 2/8/24 h
 --     (GlobalStrings 70862 AUCTION_DURATION_ONE/TWO/THREE); every deposit is labelled "for a N h post".
---   * LIST needs price x count x (1 - 5% AH cut) > deposit. The 5% is the standard auction house cut; the game has no API
---     for it. Displayed prices stay "before AH cut".
+--   * LIST needs price x count x (1 - AH cut) > deposit. The cut is an ASSUMPTION from player sources, not game data (the
+--     UI only has the label AUCTION_HOUSE_CUT_COLON, no rate): 5% at a faction house, 15% at the neutral (goblin) house,
+--     the same rates Kenny's NeutralFlip uses. The house is told apart the way NeutralFlip does it (uiMap of the three
+--     goblin zones, else the zone / subzone name); when it can't be told, the worse 15% is used and the box says so.
+--     Displayed prices stay "before AH cut".
 -- It never lists, casts, sells or moves anything. Shown at the AH, at the mailbox or with /frost water; never in combat.
 local ADDON, ns = ...
 local C, Core, FS = ns.Compat, ns.Core, ns.FrostSuite
@@ -24,7 +27,30 @@ ns.WB = WB
 local KEY = "WaterBill"
 local SCHEMA = 1
 WB.HOURS = { 2, 8, 24 } -- AUCTION_DURATION_ONE/TWO/THREE, GlobalStrings 70862
-WB.AH_CUT = 0.05
+-- AH cut by house: assumptions from player sources (NeutralFlip, Forever guides), not game data.
+WB.CUT = { faction = 0.05, neutral = 0.15, unknown = 0.15 }
+-- Same detection as NeutralFlip: Classic-era uiMapIDs (Stranglethorn Vale 1434, Tanaris 1446, Winterspring 1452; not
+-- confirmed for Forever), then the English town / zone names.
+WB.NEUTRAL_MAPS = { [1434] = true, [1446] = true, [1452] = true }
+WB.NEUTRAL_NAMES = { ["Booty Bay"] = true, ["Gadgetzan"] = true, ["Everlook"] = true,
+  ["Tanaris"] = true, ["Winterspring"] = true, ["Stranglethorn Vale"] = true, ["The Cape of Stranglethorn"] = true }
+
+-- "faction" / "neutral" / "unknown", the cut for it, and how it was decided
+function WB.House()
+  local mapID = C_Map and C_Map.GetBestMapForUnit and C.SafeNumber(FS.Call(C_Map.GetBestMapForUnit, "player"))
+  if mapID and WB.NEUTRAL_MAPS[mapID] then return "neutral", WB.CUT.neutral, "map " .. mapID end
+  local function text(fn) local v = fn and FS.Call(fn); if type(v) == "string" and not C.IsSecret(v) then return v end end
+  local zone, sub = text(GetRealZoneText), text(GetSubZoneText)
+  if WB.NEUTRAL_NAMES[sub or ""] or WB.NEUTRAL_NAMES[zone or ""] then return "neutral", WB.CUT.neutral, "zone " .. (zone or "") .. "/" .. (sub or "") end
+  if (zone or "") == "" and (sub or "") == "" and not mapID then return "unknown", WB.CUT.unknown, "zone unreadable" end
+  return "faction", WB.CUT.faction, "zone " .. (zone or "") .. "/" .. (sub or "")
+end
+function WB.CutLabel()
+  local kind, cut = WB.House()
+  local pct = math.floor(cut * 100 + 0.5)
+  if kind == "unknown" then return (L["house unknown: %d%% cut assumed"]):format(pct) end
+  return (kind == "neutral" and L["neutral house: %d%% cut assumed"] or L["faction house: %d%% cut assumed"]):format(pct)
+end
 
 -- duration index (1-3) and whether it came from the player's pick in the sell frame
 function WB.Duration()
@@ -139,7 +165,8 @@ function WB.Judge(s)
   s.hours = WB.HOURS[(WB.Duration())]
   if s.deposit == nil then s.verdict = "nodeposit"; return s end
   if s.valid == nil then s.verdict = "ask"; return s end
-  s.net = s.worth * (1 - WB.AH_CUT) - s.deposit
+  s.house, s.cut = WB.House()
+  s.net = s.worth * (1 - s.cut) - s.deposit
   local net = s.net
   s.verdict = net > 0 and "LIST" or drink
   if net <= 0 then s.why = L["not worth the deposit"] end
@@ -187,7 +214,7 @@ function WB.Update()
   FS.Headline(KEY, listWorth > 0 and ("%s ~%s %s"):format(L["LIST"], WB.Money(listWorth), L["before AH cut"]) or L["Water Bill"], listWorth > 0 and "CoinGold" or "Snow")
   FS.ClearLines(KEY)
   for i, l in ipairs(lines) do FS.Line(KEY, i, l) end
-  FS.Status(KEY, WB.ahOpen and L["at the AH"] or "", "Mist")
+  FS.Status(KEY, WB.ahOpen and (L["at the AH"] .. " · " .. WB.CutLabel()) or "", "Mist")
   FS.State(KEY, "active")
 end
 WB.Height = function() return 50 + 14 * math.max(0, #WB.lines - 1) end
@@ -210,12 +237,14 @@ end
 
 function WB.DetectionLines()
   local d, picked = WB.Duration()
-  local out = { ("duration: %d h (%s)"):format(WB.HOURS[d], picked and "your pick in the sell frame" or "default; your pick isn't readable"),
+  local kind, cut, how = WB.House()
+  local out = { ("AH cut: %d%% for a %s house (%s); an assumption from player sources, not game data"):format(math.floor(cut * 100 + 0.5), kind, how),
+    ("duration: %d h (%s)"):format(WB.HOURS[d], picked and "your pick in the sell frame" or "default; your pick isn't readable"),
     ("AH open: %s, mailbox open: %s; price source: %s"):format(tostring(WB.ahOpen), tostring(WB.mailOpen),
     (ns.Hub and ns.Hub.prices and next(ns.Hub.prices)) and "Kenny hub (PriceLog)" or "none (install PriceLog and scan)") }
   for _, s in ipairs(WB.Scan() or {}) do
     WB.Judge(s)
-    out[#out + 1] = ("%d x%d: vendor %s, bound %s, AH takes it %s, price %s, deposit %s (%d h), after 5%% cut and deposit %s -> %s"):format(
+    out[#out + 1] = ("%d x%d: vendor %s, bound %s, AH takes it %s, price %s, deposit %s (%d h), after cut and deposit %s -> %s"):format(
       s.itemID, s.count, tostring(s.vendor), tostring(s.bound), tostring(s.valid), tostring(s.price), tostring(s.deposit),
       s.hours or 2, tostring(s.net), s.verdict)
   end

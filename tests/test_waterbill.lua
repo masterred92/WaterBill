@@ -35,12 +35,33 @@ check(row.lineText[1]:find("before AH cut") and row.lineText[1]:find("deposit un
 check(not row.headText:find("LIST"), "no LIST headline without a deposit")
 
 -- At the AH: live deposit; a cheap stack is not worth it; the AH refusing an item turns it into DRINK.
+local zone, sub, map = "Orgrimmar", "The Drag", nil
+_G.GetRealZoneText = function() return zone end
+_G.GetSubZoneText = function() return sub end
+_G.C_Map = { GetBestMapForUnit = function() return map end }
 W.fire("MAIL_CLOSED"); W.ahOpen = true; W.deposit = 30; W.fire("AUCTION_HOUSE_SHOW"); W.advance(0.3)
 s1 = WB.stacks[1]
 check(s1.deposit == 1050 and s1.verdict == "LIST" and row.lineText[1]:find("deposit 10s 50c for a 2 h post"), "live deposit, 2 h post by default")
 check(row.lineText[1]:find("|cffffd100LIST|r", 1, true) ~= nil, "LIST text is CoinGold ffd100")
-check(math.abs(s1.net - (1400 * 0.95 - 1050)) < 0.01, "5% AH cut applied in the comparison")
--- 5% cut decides: worth 1100, deposit 1050 -> 1045 after the cut -> not worth it (would be LIST without the cut).
+check(math.abs(s1.net - (1400 * 0.95 - 1050)) < 0.01 and s1.house == "faction", "faction house: 5% cut applied in the comparison")
+check(row.statusText:find("faction house: 5% cut assumed", 1, true) ~= nil, "faction rate labelled as an assumption")
+-- worth 1200, deposit 1050: faction 1140 > 1050 = LIST; neutral / unknown 1020 < 1050 = not worth it.
+prices[8079] = { p = 1200 / 35, t = 100 }; W.fire("BAG_UPDATE_DELAYED")
+check(WB.stacks[1].verdict == "LIST", "faction house (5%): LIST")
+zone, sub = "Stranglethorn Vale", "Booty Bay"; W.fire("BAG_UPDATE_DELAYED")
+check(WB.stacks[1].house == "neutral" and WB.stacks[1].cut == 0.15 and WB.stacks[1].verdict == "DRINK", "neutral house by zone name: 15%, not worth it")
+check(row.statusText:find("neutral house: 15% cut assumed", 1, true) ~= nil, "neutral rate labelled as an assumption")
+zone, sub, map = "Somewhere", "", 1446; W.fire("BAG_UPDATE_DELAYED")
+check(WB.stacks[1].house == "neutral", "neutral house by uiMap (Tanaris 1446)")
+zone, sub, map = nil, nil, nil; W.fire("BAG_UPDATE_DELAYED")
+check(WB.stacks[1].house == "unknown" and WB.stacks[1].cut == 0.15 and WB.stacks[1].verdict == "DRINK", "unknown house: the worse 15%")
+check(row.statusText:find("house unknown: 15% cut assumed", 1, true) ~= nil, "unknown house says so")
+local secretZone = {}; W.secret[secretZone] = true
+_G.GetRealZoneText = function() return secretZone end; W.fire("BAG_UPDATE_DELAYED")
+check(WB.stacks[1].house == "unknown", "secret zone text: unknown, 15%")
+_G.GetRealZoneText = function() return zone end
+zone, sub = "Orgrimmar", "The Drag"; prices[8079] = { p = 40, t = 100 }; W.fire("BAG_UPDATE_DELAYED")
+-- faction 5% cut decides: worth 1100, deposit 1050 -> 1045 after the cut -> not worth it (would be LIST without the cut).
 prices[8079] = { p = 1100 / 35, t = 100 }; W.fire("BAG_UPDATE_DELAYED")
 check(WB.stacks[1].verdict == "DRINK" and WB.stacks[1].why == "not worth the deposit", "after the 5% cut: not worth the deposit")
 prices[8079] = { p = 40, t = 100 }
@@ -61,7 +82,7 @@ check(cheap.verdict == "DRINK" and cheap.why == "not worth the deposit", "worth 
 W.ahRefuse = { [8079] = true }; W.fire("BAG_UPDATE_DELAYED")
 check(WB.stacks[1].verdict == "DRINK" and WB.stacks[1].why == "the AH won't take it", "IsSellItemValid false: DRINK")
 W.ahRefuse = nil; W.fire("BAG_UPDATE_DELAYED")
-check(row.headText:find("LIST ~") and row.statusText == "at the AH", "headline sums what's worth listing")
+check(row.headText:find("LIST ~") and row.statusText:find("^at the AH") ~= nil, "headline sums what's worth listing")
 
 -- Deposit is never invented: no live answer -> nil.
 W.deposit = nil; W.fire("BAG_UPDATE_DELAYED")
@@ -97,6 +118,6 @@ check(tt.lines[1] and tt.lines[1]:find("40c each before AH cut"), "tooltip: pric
 tt.lines = {}; hub.RunTooltips(tt, { id = 274964 })
 check(#tt.lines == 0, "no tooltip line for items with a vendor price")
 W.prints = {}; WB.Slash("debug")
-check(W.prints[1] and W.prints[1]:find("duration: 2 h") and W.prints[2]:find("PriceLog"), "debug names the duration and price source")
+check(W.prints[1] and W.prints[1]:find("AH cut: 5%% for a faction house") and W.prints[1]:find("not game data") and W.prints[2]:find("duration: 2 h") and W.prints[3]:find("PriceLog"), "debug names the duration and price source")
 
 W.done("WaterBill")
