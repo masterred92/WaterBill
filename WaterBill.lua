@@ -195,9 +195,10 @@ end
 
 
 -- One short line per stack (VISUAL_SPEC section 9): VERDICT, item, xN, then the figures. The verdict word comes first and
--- the figures last; when the line is too wide for the box, the ITEM NAME is shortened with "…" (never the figures), so the
--- price, the deposit (or DEPOSIT? when it's unknown) and the reason always stay visible. "Conjured " is left off (every item here is
--- conjured); tooltips keep the full name.
+-- the figures last; when the line is too wide for the box, the ITEM NAME is shortened with "…" first, so the price, the
+-- deposit (or DEPOSIT? when it's unknown) and the reason stay visible. Only when the figures alone are too wide (huge gold or
+-- xN) are they cut too, from the right with "…" (see WB.Fit). "Conjured " is left off (every item here is conjured);
+-- tooltips keep the full name.
 --   LIST Crystal Water x40 ~32s 0c · 10s50c/2h      (worth before the AH cut · deposit / post length)
 --   DRINK Sparkling Water x20 · deposit too high     EAT Cinnamon Roll x20 · AH won't take it   DRINK … · bound
 --   VENDOR Mote of Unstable Magic x5 2s 0c            DEPOSIT? Crystal Water x40 ~32s 0c        ASK Crystal Water x40 ~32s 0c
@@ -215,7 +216,8 @@ function WB.Width(text)
 end
 -- head .. name .. tail, with name cut (whole characters, then "…") until it fits WB.TEXT_W.
 -- Last resort, when even "head … tail" is too wide (huge gold, a huge xN): drop the name, then cut the tail from the
--- right with "…". The line is always within WB.TEXT_W, so the client never wraps or cuts it on its own.
+-- right with "…"; if the head alone is too wide, cut it as plain text. The line is always within WB.TEXT_W, so the
+-- client never wraps or cuts it on its own.
 local function trim(s) return (s:sub(1, -2):gsub("[\128-\255]+$", ""):gsub("%s+$", "")) end
 function WB.Fit(head, name, tail)
   local line = head .. name .. tail
@@ -233,7 +235,13 @@ function WB.Fit(head, name, tail)
     line = head .. t .. "…"
     if WB.Width(line) <= WB.TEXT_W then return line end
   end
-  return head .. "…"
+  if WB.Width(head .. "…") <= WB.TEXT_W then return head .. "…" end
+  local h = head:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")   -- plain text, so a cut never splits a colour code
+  while h ~= "" do
+    h = trim(h)
+    if WB.Width(h .. "…") <= WB.TEXT_W then return h .. "…" end
+  end
+  return "…"
 end
 function WB.ShortName(s)
   return ((s.name or ("item " .. s.itemID)):gsub("^" .. L["Conjured"] .. " ", ""))

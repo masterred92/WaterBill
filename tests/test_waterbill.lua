@@ -179,7 +179,10 @@ end
 check(WB.Fit(lst, "Crystal Water", " x40 ~9999999g 99s · 9999g 99s/24h"):find("Crystal", 1, true) == nil, "the name goes first when only the figures fit")
 check(WB.Fit(lst, "Water", " x4") == lst .. "Water x4", "short lines are untouched")
 local hugeHead = ("|cffffd100%s|r "):format(("W"):rep(60))
-check(friz(WB.Fit(hugeHead, "Water", " x4")) >= 0, "a head wider than the line still returns (no endless loop)")
+local cutHead = WB.Fit(hugeHead, "Water", " x4")
+check(friz(cutHead) <= WB.TEXT_W and cutHead:sub(1, 3) == "WWW" and cutHead:sub(-3) == "…" and not cutHead:find("|", 1, true),
+  "a head wider than the line is cut too (plain text, ends in …), within 218 px: " .. cutHead)
+check(WB.Fit("|cffffd100LIST|r ", "Water", (" x1"):rep(200)):sub(1, 17) == "|cffffd100LIST|r ", "a head that fits keeps its colour")
 
 -- Secret item name or bound flag: never read; the stack falls back to the item's own name or "item <id>".
 local origInfo = C_Container.GetContainerItemInfo

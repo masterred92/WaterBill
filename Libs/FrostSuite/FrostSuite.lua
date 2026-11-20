@@ -6,7 +6,7 @@
 -- upgrade keeps it. Each addon works alone: with one addon loaded the dock is a single row.
 -- Look and numbers come from UI Bot's VISUAL_SPEC.md (v1): FS.C, FS.FONT, FS.PALETTE and FS.ADDONS are the drop-in tables.
 local _, ns = ...
-local MAJOR, MINOR = "FrostSuite-1.0", 5
+local MAJOR, MINOR = "FrostSuite-1.0", 6
 local FS = _G.FrostSuite_1_0
 if type(FS) ~= "table" then FS = {}; _G.FrostSuite_1_0 = FS end
 ns.FrostSuite = FS
@@ -184,6 +184,8 @@ function FS.NeedText(need)
 end
 -- "Hide until I learn" is saved per character in the addon's own SavedVariables (db.hideUntilLearned["Name-Realm"]).
 -- Name or realm unreadable (secret, missing or empty): nothing is saved; the box hides for this session only.
+-- r6: the character key is read secret-safe; when the name or realm can't be read, "Hide until I learn" lasts this session
+-- and nothing is saved.
 local function plainText(fn, ...)
   if type(fn) ~= "function" then return nil end
   local ok, v = pcall(fn, ...)

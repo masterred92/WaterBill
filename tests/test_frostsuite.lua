@@ -9,6 +9,18 @@ W.fire("PLAYER_LOGIN")
 local FS = _G.FrostSuite_1_0
 local MINOR = tonumber(io.open("Libs/FrostSuite/VERSION"):read("*l"))
 check(type(FS) == "table" and FS.minor == MINOR, "library installed as FrostSuite_1_0 at its MINOR")
+do -- HASHES: one line per MINOR, 1..MINOR in order, no hash used twice (a content change takes a new line)
+  local n, ok, seen = 0, true, {}
+  for line in io.lines("Libs/FrostSuite/HASHES") do
+    if not line:find("^#") and line ~= "" then
+      local m, h = line:match("^(%d+) (%x+)$")
+      n = n + 1
+      ok = ok and tonumber(m) == n and #h == 64 and not seen[h]
+      if h then seen[h] = true end
+    end
+  end
+  check(ok and n == MINOR, "HASHES records MINOR 1.." .. MINOR .. " once each, in order, no shared hash")
+end
 check(FS.rows[name] ~= nil, "the addon registered its own row")
 check(SLASH_FROSTSUITE1 == "/frost" and SlashCmdList.FROSTSUITE ~= nil, "/frost registered")
 
@@ -246,7 +258,7 @@ W.fire("PLAYER_LEVEL_UP", 12)
 check(refreshed == 1 and FS.PlayerLevel() == 12, "PLAYER_LEVEL_UP re-checks every box and its level is used at once")
 W.fire("LEARNED_SPELL_IN_SKILL_LINE", 122)
 check(refreshed == 2, "LEARNED_SPELL_IN_SKILL_LINE re-checks every box")
--- name or realm unreadable (secret value, or empty): the click hides for this session only and saves nothing
+-- r6: name or realm unreadable (secret value, or empty): the click hides for this session only and saves nothing
 local saveName, saveRealm = UnitName, GetRealmName
 UnitName = function() return "SecretName" end; W.secret["SecretName"] = true
 lrow.db.hideUntilLearned = nil; lrow.hideSession = nil; FS.NotYet(lk, needs[1])

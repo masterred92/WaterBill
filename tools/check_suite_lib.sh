@@ -21,6 +21,31 @@ if [ -z "$REC" ]; then echo "FAIL: MINOR $MINOR is not recorded in $LIB/HASHES";
 elif [ "$REC" != "$SUM" ]; then echo "FAIL: FrostSuite.lua changed without a MINOR bump (MINOR $MINOR is recorded with a different hash)"; status=1; fi
 DUP=$(grep -v '^#' $LIB/HASHES | awk '{print $2}' | sort | uniq -d)
 [ -z "$DUP" ] || { echo "FAIL: two MINORs share one hash in $LIB/HASHES"; status=1; }
+# Recorded MINORs never change their hash (a content change takes a new MINOR line, it never rewrites an old one).
+# Compared with: the last commit (FROST_SUITE_HASHES_BASE, default HEAD; catches an edit before it is committed), the
+# released branch (FROST_SUITE_RELEASED, default origin/main, when fetched; its FrostSuite.lua differing from ours also needs
+# a higher MINOR), and each MINOR's own canonical tree, frost-suite-lib-r<N> next to the canonical folder, when present.
+hashes_of() { grep -v '^#' | awk 'NF == 2 { print $1, $2 }'; }
+recorded() { awk -v m="$1" '$1 == m { print $2 }' $LIB/HASHES; }
+for REF in "${FROST_SUITE_HASHES_BASE:-HEAD}" "${FROST_SUITE_RELEASED:-origin/main}"; do
+  git cat-file -e "$REF:$LIB/HASHES" 2>/dev/null || continue
+  BAD=$(git show "$REF:$LIB/HASHES" | hashes_of | while read -r m h; do
+    [ "$(recorded "$m")" = "$h" ] || echo "FAIL: MINOR $m is recorded as ${h%"${h#????????}"}… in $REF but differs (or is missing) here"; done)
+  [ -z "$BAD" ] || { echo "$BAD"; status=1; }
+done
+REL=${FROST_SUITE_RELEASED:-origin/main}
+if git cat-file -e "$REL:$LIB/FrostSuite.lua" 2>/dev/null; then
+  RSUM=$(git show "$REL:$LIB/FrostSuite.lua" | sha256sum | cut -c1-64)
+  RMIN=$(git show "$REL:$LIB/VERSION" 2>/dev/null || echo 0)
+  if [ "$RSUM" != "$SUM" ] && [ "$MINOR" -le "$RMIN" ]; then echo "FAIL: FrostSuite.lua differs from $REL (r$RMIN) but MINOR is not higher"; status=1; fi
+fi
+if [ -n "$CANON" ] && [ "$CANON" != "none" ]; then
+  for m in $(grep -v '^#' $LIB/HASHES | awk '{print $1}'); do
+    T="$CANON/../frost-suite-lib-r$m/FrostSuite.lua"
+    [ -f "$T" ] || continue
+    [ "$(sha256sum "$T" | cut -c1-64)" = "$(recorded "$m")" ] || { echo "FAIL: frost-suite-lib-r$m does not match MINOR $m in HASHES"; status=1; }
+  done
+fi
 if [ "$CANON" = "none" ]; then
   :
 elif [ -z "$CANON" ]; then
