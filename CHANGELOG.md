@@ -5,5 +5,7 @@
 First release, part of the Frost Suite.
 
 - LIST / DRINK / EAT for conjured water and food in your bags, only for items whose vendor price is 0.
-- Live auction-house check (`IsSellItemValid`), PriceLog prices through the Kenny hub ("before AH cut"), live 12 h deposit at the AH.
+- Live auction-house check (`IsSellItemValid`), PriceLog prices through the Kenny hub ("before AH cut").
+- Live deposit at the AH for your picked duration (or 2 h, labelled "for a N h post"); no deposit = "deposit unknown", no LIST.
+- LIST only when price × count after the 5% AH cut beats the deposit. LIST in CoinGold.
 - Shown at the auction house, mailbox or `/frost water`; never in combat. Item tooltip line. `/frost water debug`.

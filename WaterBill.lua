@@ -6,8 +6,13 @@
 --   * Whether the AH takes the item is asked live: C_AuctionHouse.IsSellItemValid on the real bag slot. Bound = DRINK.
 --   * The price is your own PriceLog scan, through the Kenny hub (ns.Hub.GetPrice), the same way GoldPerSpot reads it.
 --     No scan = "no price scan", never a guess. Prices are labelled "before AH cut".
---   * The deposit is read live from the game (CalculateCommodityDeposit / CalculateItemDeposit, 12 h) only while the
---     AH is open; it is never hard-coded. Away from the AH the line says "deposit at the AH".
+--   * The deposit is read live from the game (CalculateCommodityDeposit / CalculateItemDeposit) only while the AH is
+--     open; it is never hard-coded. No deposit from the game = "deposit unknown" and no LIST verdict.
+--     Duration: the one picked in Blizzard's sell frame (CVar auctionHouseDurationDropdown, which the sell frame itself
+--     reads: Blizzard_AuctionHouseSellFrame.lua) when readable, else index 1. On Forever 1/2/3 = 2/8/24 h
+--     (GlobalStrings 70862 AUCTION_DURATION_ONE/TWO/THREE); every deposit is labelled "for a N h post".
+--   * LIST needs price x count x (1 - 5% AH cut) > deposit. The 5% is the standard auction house cut; the game has no API
+--     for it. Displayed prices stay "before AH cut".
 -- It never lists, casts, sells or moves anything. Shown at the AH, at the mailbox or with /frost water; never in combat.
 local ADDON, ns = ...
 local C, Core, FS = ns.Compat, ns.Core, ns.FrostSuite
@@ -18,7 +23,16 @@ KennyWaterBill = WB
 ns.WB = WB
 local KEY = "WaterBill"
 local SCHEMA = 1
-local DURATION = 1 -- luaIndex 1 = the shortest (12 h) listing, the cheapest deposit
+WB.HOURS = { 2, 8, 24 } -- AUCTION_DURATION_ONE/TWO/THREE, GlobalStrings 70862
+WB.AH_CUT = 0.05
+
+-- duration index (1-3) and whether it came from the player's pick in the sell frame
+function WB.Duration()
+  local get = (C_CVar and C_CVar.GetCVar) or GetCVar
+  local v = get and tonumber(FS.Call(get, "auctionHouseDurationDropdown"))
+  if v and WB.HOURS[v] then return v, true end
+  return 1, false
+end
 
 -- Item IDs from the game's Item table (build 70862); all have SellPrice 0 there.
 WB.ITEMS = {
@@ -85,6 +99,7 @@ function WB.Deposit(s)
     if st == Enum.ItemCommodityStatus.Item then commodity = false elseif st ~= nil and st ~= Enum.ItemCommodityStatus.Unknown then commodity = true end
   end
   local d
+  local DURATION = WB.Duration()
   if commodity ~= false and AH.CalculateCommodityDeposit then d = C.SafeNumber(FS.Call(AH.CalculateCommodityDeposit, s.itemID, DURATION, s.count)) end
   if d == nil and commodity ~= true and AH.CalculateItemDeposit then
     local loc = location(s)
@@ -121,23 +136,30 @@ function WB.Judge(s)
   if not s.price then s.verdict = "noprice"; return s end
   s.worth = s.price * s.count
   s.deposit = WB.Deposit(s)
+  s.hours = WB.HOURS[(WB.Duration())]
+  if s.deposit == nil then s.verdict = "nodeposit"; return s end
   if s.valid == nil then s.verdict = "ask"; return s end
-  local net = s.worth - (s.deposit or 0)
+  s.net = s.worth * (1 - WB.AH_CUT) - s.deposit
+  local net = s.net
   s.verdict = net > 0 and "LIST" or drink
   if net <= 0 then s.why = L["not worth the deposit"] end
   return s
 end
 
+function WB.Post(h) return (L["for a %d h post"]):format(h or 2) end
+
 function WB.LineFor(s)
   local name = (s.name or ("item " .. s.itemID)) .. " x" .. s.count
   local v = s.verdict
   if v == "LIST" then
-    return ("|cff7fd8ff%s|r %s: ~%s %s, %s"):format(L["LIST"], name, WB.Money(s.worth), L["before AH cut"],
-      s.deposit and (L["deposit"] .. " " .. WB.Money(s.deposit)) or L["deposit at the AH"])
+    return ("|cffffd100%s|r %s: ~%s %s, %s %s %s"):format(L["LIST"], name, WB.Money(s.worth), L["before AH cut"],
+      L["deposit"], WB.Money(s.deposit), WB.Post(s.hours))
   elseif v == "DRINK" or v == "EAT" then
     return ("|cffd8f3ff%s|r %s: %s"):format(v == "EAT" and L["EAT"] or L["DRINK"], name, s.why or "")
   elseif v == "vendor" then return ("%s: %s %s"):format(name, L["vendor price"], WB.Money(s.vendor))
   elseif v == "noprice" then return ("%s: %s"):format(name, L["no price scan"])
+  elseif v == "nodeposit" then
+    return ("%s: ~%s %s, %s"):format(name, WB.Money(s.worth), L["before AH cut"], WB.ahOpen and L["deposit unknown"] or L["deposit unknown (open the AH)"])
   elseif v == "ask" then return ("%s: ~%s %s, %s"):format(name, WB.Money(s.worth), L["before AH cut"], L["the AH answers when it's open"])
   end
   return ("%s: %s"):format(name, L["item data loading"])
@@ -162,7 +184,7 @@ function WB.Update()
     if n == 0 then lines[1] = L["No conjured water or food in your bags."] end
   end
   WB.lines = lines
-  FS.Headline(KEY, listWorth > 0 and ("%s ~%s %s"):format(L["LIST"], WB.Money(listWorth), L["before AH cut"]) or L["Water Bill"], "Snow")
+  FS.Headline(KEY, listWorth > 0 and ("%s ~%s %s"):format(L["LIST"], WB.Money(listWorth), L["before AH cut"]) or L["Water Bill"], listWorth > 0 and "CoinGold" or "Snow")
   FS.ClearLines(KEY)
   for i, l in ipairs(lines) do FS.Line(KEY, i, l) end
   FS.Status(KEY, WB.ahOpen and L["at the AH"] or "", "Mist")
@@ -187,12 +209,15 @@ function WB.Slash(msg)
 end
 
 function WB.DetectionLines()
-  local out = { ("AH open: %s, mailbox open: %s; price source: %s"):format(tostring(WB.ahOpen), tostring(WB.mailOpen),
+  local d, picked = WB.Duration()
+  local out = { ("duration: %d h (%s)"):format(WB.HOURS[d], picked and "your pick in the sell frame" or "default; your pick isn't readable"),
+    ("AH open: %s, mailbox open: %s; price source: %s"):format(tostring(WB.ahOpen), tostring(WB.mailOpen),
     (ns.Hub and ns.Hub.prices and next(ns.Hub.prices)) and "Kenny hub (PriceLog)" or "none (install PriceLog and scan)") }
   for _, s in ipairs(WB.Scan() or {}) do
     WB.Judge(s)
-    out[#out + 1] = ("%d x%d: vendor %s, bound %s, AH takes it %s, price %s, deposit %s -> %s"):format(s.itemID, s.count,
-      tostring(s.vendor), tostring(s.bound), tostring(s.valid), tostring(s.price), tostring(s.deposit), s.verdict)
+    out[#out + 1] = ("%d x%d: vendor %s, bound %s, AH takes it %s, price %s, deposit %s (%d h), after 5%% cut and deposit %s -> %s"):format(
+      s.itemID, s.count, tostring(s.vendor), tostring(s.bound), tostring(s.valid), tostring(s.price), tostring(s.deposit),
+      s.hours or 2, tostring(s.net), s.verdict)
   end
   return out
 end
@@ -230,7 +255,7 @@ end)
 Core.Setup({ cmd = "/frost water",
   required = { "C_Container.GetContainerItemInfo", "C_Item.GetItemInfo", "C_Timer.After" },
   optional = { "C_AuctionHouse.IsSellItemValid", "C_AuctionHouse.CalculateCommodityDeposit", "C_AuctionHouse.CalculateItemDeposit",
-    "C_AuctionHouse.GetItemCommodityStatus", "ItemLocation.CreateFromBagAndSlot" },
+    "C_AuctionHouse.GetItemCommodityStatus", "ItemLocation.CreateFromBagAndSlot", "C_CVar.GetCVar" },
   db = function() return db end,
   firstRun = { L["Water Bill is ready: open the auction house or mailbox (or /frost water) to see whether your conjured water and food are worth listing."] },
   debugLines = function() return WB.DetectionLines() end })

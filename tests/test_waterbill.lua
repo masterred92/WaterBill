@@ -29,13 +29,32 @@ prices[8079] = { p = 40, t = 100 }; prices[5350] = { p = 1, t = 100 }
 W.fire("BAG_UPDATE_DELAYED")
 check(by[8079] ~= WB.stacks[1] or true, "rescan")
 local s1 = WB.stacks[1]
-check(s1.verdict == "LIST" and s1.worth == 1400 and s1.deposit == nil, "away from the AH: LIST by price, deposit unknown")
-check(row.lineText[1]:find("before AH cut") and row.lineText[1]:find("deposit at the AH"), "labelled before AH cut, deposit at the AH")
+check(s1.verdict == "nodeposit" and s1.worth == 1400 and s1.deposit == nil, "away from the AH: no deposit, so no LIST verdict")
+check(row.lineText[1]:find("before AH cut") and row.lineText[1]:find("deposit unknown %(open the AH%)") and not row.lineText[1]:find("LIST"),
+  "labelled before AH cut + deposit unknown")
+check(not row.headText:find("LIST"), "no LIST headline without a deposit")
 
 -- At the AH: live deposit; a cheap stack is not worth it; the AH refusing an item turns it into DRINK.
 W.fire("MAIL_CLOSED"); W.ahOpen = true; W.deposit = 30; W.fire("AUCTION_HOUSE_SHOW"); W.advance(0.3)
 s1 = WB.stacks[1]
-check(s1.deposit == 1050 and s1.verdict == "LIST" and row.lineText[1]:find("deposit 10s 50c"), "live deposit read at the AH")
+check(s1.deposit == 1050 and s1.verdict == "LIST" and row.lineText[1]:find("deposit 10s 50c for a 2 h post"), "live deposit, 2 h post by default")
+check(row.lineText[1]:find("|cffffd100LIST|r", 1, true) ~= nil, "LIST text is CoinGold ffd100")
+check(math.abs(s1.net - (1400 * 0.95 - 1050)) < 0.01, "5% AH cut applied in the comparison")
+-- 5% cut decides: worth 1100, deposit 1050 -> 1045 after the cut -> not worth it (would be LIST without the cut).
+prices[8079] = { p = 1100 / 35, t = 100 }; W.fire("BAG_UPDATE_DELAYED")
+check(WB.stacks[1].verdict == "DRINK" and WB.stacks[1].why == "not worth the deposit", "after the 5% cut: not worth the deposit")
+prices[8079] = { p = 40, t = 100 }
+-- The player's own duration pick in the sell frame (CVar) changes the deposit and the label.
+local cv = 3
+_G.C_CVar = { GetCVar = function(n) if n == "auctionHouseDurationDropdown" then return tostring(cv) end end }
+local seen
+local orig = C_AuctionHouse.CalculateCommodityDeposit
+C_AuctionHouse.CalculateCommodityDeposit = function(id, d, q) seen = d; return orig(id, d, q) end
+W.fire("BAG_UPDATE_DELAYED")
+check(seen == 3 and WB.stacks[1].hours == 24 and row.lineText[1]:find("for a 24 h post"), "picked 24 h: deposit asked for index 3, labelled 24 h")
+cv = 9; W.fire("BAG_UPDATE_DELAYED")
+check(seen == 1 and row.lineText[1]:find("for a 2 h post"), "unreadable pick: 2 h")
+_G.C_CVar = nil; C_AuctionHouse.CalculateCommodityDeposit = orig; W.fire("BAG_UPDATE_DELAYED")
 local cheap
 for _, s in ipairs(WB.stacks) do if s.itemID == 5350 then cheap = s end end
 check(cheap.verdict == "DRINK" and cheap.why == "not worth the deposit", "worth less than the deposit: DRINK")
@@ -46,7 +65,7 @@ check(row.headText:find("LIST ~") and row.statusText == "at the AH", "headline s
 
 -- Deposit is never invented: no live answer -> nil.
 W.deposit = nil; W.fire("BAG_UPDATE_DELAYED")
-check(WB.stacks[1].deposit == nil, "no deposit from the game: none shown")
+check(WB.stacks[1].deposit == nil and WB.stacks[1].verdict == "nodeposit" and row.lineText[1]:find("deposit unknown"), "AH open, no deposit from the game: deposit unknown, no LIST")
 
 -- Combat: hidden; /frost water waits.
 W.combat = true; W.fire("PLAYER_REGEN_DISABLED")
@@ -78,6 +97,6 @@ check(tt.lines[1] and tt.lines[1]:find("40c each before AH cut"), "tooltip: pric
 tt.lines = {}; hub.RunTooltips(tt, { id = 274964 })
 check(#tt.lines == 0, "no tooltip line for items with a vendor price")
 W.prints = {}; WB.Slash("debug")
-check(W.prints[1] and W.prints[1]:find("PriceLog"), "debug names the price source")
+check(W.prints[1] and W.prints[1]:find("duration: 2 h") and W.prints[2]:find("PriceLog"), "debug names the duration and price source")
 
 W.done("WaterBill")
